@@ -3,6 +3,8 @@ import { Users, Plus, Edit, Trash2, Key, X, Search, UserCheck, UserX, Mail, Phon
 import { staffAPI } from '../services/api';
 import toast from 'react-hot-toast';
 import Pagination from '../components/Pagination';
+import Modal from '../components/Modal';
+import ConfirmModal from '../components/ConfirmModal';
 
 const Staff = () => {
   const [staff, setStaff] = useState([]);
@@ -454,7 +456,7 @@ const Staff = () => {
         ) : filteredStaff.length === 0 ? (
           <div className="text-center py-20">
             <Users className="w-16 h-16 text-slate-300 mx-auto mb-4" />
-            <p className="text-slate-500 text-lg">
+            <p className="text-slate-500 font-medium">
               {searchQuery ? 'No staff members found matching your search' : 'No staff members yet'}
             </p>
           </div>
@@ -674,27 +676,18 @@ const Staff = () => {
       </div>
 
       {/* Step 1: Staff Information Modal */}
-      {showStepOneModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-6 border-b border-slate-200">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-2xl font-bold text-slate-900">Add Staff Member</h3>
-                  <p className="text-sm text-slate-600 mt-1">Create new staff account with role: Staff </p>
-                </div>
-                <button
-                  onClick={() => {
-                    setShowStepOneModal(false);
-                    resetStaffInfoForm();
-                  }}
-                  className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-            <form onSubmit={handleStaffInfoSubmit} className="p-6 space-y-4">
+      <Modal
+        isOpen={showStepOneModal}
+        onClose={() => {
+          setShowStepOneModal(false);
+          resetStaffInfoForm();
+        }}
+        title="Add Staff Member"
+        subtitle="Step 1 of 2: Staff Information"
+        size="md"
+        icon={<Users className="w-6 h-6" />}
+      >
+        <form onSubmit={handleStaffInfoSubmit} className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="md:col-span-2">
                   <label className="block text-sm font-medium text-slate-700 mb-2">Full Name *</label>
@@ -793,60 +786,49 @@ const Staff = () => {
                     setShowStepOneModal(false);
                     resetStaffInfoForm();
                   }}
-                  className="px-6 py-3 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors"
+                  className="px-6 py-3 border-2 border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors font-semibold"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={emailChecking || !!emailError}
-                  className="px-6 py-3 bg-gradient-to-r from-cyan-600 to-teal-600 text-white rounded-lg hover:from-cyan-700 hover:to-teal-700 transition-all duration-200 flex items-center gap-2 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-6 py-3 bg-gradient-to-r from-cyan-600 to-teal-600 text-white rounded-lg hover:from-cyan-700 hover:to-teal-700 transition-all duration-200 flex items-center gap-2 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed font-semibold"
                 >
                   Next: Create Account
                 </button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
+      </Modal>
 
       {/* Step 2: Create Account Modal */}
-      {showStepTwoModal && tempStaffInfo && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full">
-            <div className="p-6 border-b border-slate-200">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-2xl font-bold text-slate-900">Create Account</h3>
-                  <p className="text-sm text-slate-600 mt-1">Step 2 of 2: Account Setup</p>
-                </div>
-                <button
-                  onClick={() => {
-                    setShowStepTwoModal(false);
-                    setTempStaffInfo(null);
-                    resetAccountForm();
-                  }}
-                  className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
+      <Modal
+        isOpen={showStepTwoModal && tempStaffInfo}
+        onClose={() => {
+          setShowStepTwoModal(false);
+          setTempStaffInfo(null);
+          resetAccountForm();
+        }}
+        title="Create Account"
+        subtitle="Step 2 of 2: Account Setup"
+        size="sm"
+        icon={<Key className="w-6 h-6" />}
+      >
+        {tempStaffInfo && (
+          <div>
+            <div className="bg-cyan-50 border border-cyan-200 rounded-lg p-4 mb-6">
+              <p className="text-sm text-slate-700 mb-2">
+                Creating account for: <span className="font-semibold text-cyan-700">{tempStaffInfo.full_name}</span>
+              </p>
+              <p className="text-xs text-slate-600 mb-1">
+                <Mail className="w-3 h-3 inline mr-1" />
+                {tempStaffInfo.email}
+              </p>
+              <p className="text-xs text-slate-600">
+                <Shield className="w-3 h-3 inline mr-1" />
+                Role: Staff 
+              </p>
             </div>
-            
-            <div className="p-6">
-              <div className="bg-cyan-50 border border-cyan-200 rounded-lg p-4 mb-6">
-                <p className="text-sm text-slate-700 mb-2">
-                  Creating account for: <span className="font-semibold text-cyan-700">{tempStaffInfo.full_name}</span>
-                </p>
-                <p className="text-xs text-slate-600 mb-1">
-                  <Mail className="w-3 h-3 inline mr-1" />
-                  {tempStaffInfo.email}
-                </p>
-                <p className="text-xs text-slate-600">
-                  <Shield className="w-3 h-3 inline mr-1" />
-                  Role: Staff 
-                </p>
-              </div>
 
               <form onSubmit={handleAccountCreation} className="space-y-4">
                 <div>
@@ -896,29 +878,22 @@ const Staff = () => {
                 </div>
               </form>
             </div>
-          </div>
-        </div>
-      )}
+        )}
+      </Modal>
 
       {/* Edit Staff Modal */}
-      {showEditModal && selectedStaff && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-6 border-b border-slate-200">
-              <div className="flex items-center justify-between">
-                <h3 className="text-2xl font-bold text-slate-900">Edit Staff Member</h3>
-                <button
-                  onClick={() => {
-                    setShowEditModal(false);
-                    setSelectedStaff(null);
-                  }}
-                  className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-            <form onSubmit={handleEditStaff} className="p-6 space-y-4">
+      <Modal
+        isOpen={showEditModal && selectedStaff}
+        onClose={() => {
+          setShowEditModal(false);
+          setSelectedStaff(null);
+        }}
+        title="Edit Staff Member"
+        subtitle={`Update information for ${selectedStaff?.full_name || ''}`}
+        size="md"
+        icon={<Edit className="w-6 h-6" />}
+      >
+        <form onSubmit={handleEditStaff} className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">Full Name *</label>
@@ -1041,104 +1016,81 @@ const Staff = () => {
                 </button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
+      </Modal>
 
       {/* Delete Staff Modal */}
-      {showDeleteModal && selectedStaff && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full">
-            <div className="p-6">
-              <div className="flex items-center justify-center w-16 h-16 bg-rose-100 rounded-full mx-auto mb-4">
-                <Trash2 className="w-8 h-8 text-rose-600" />
-              </div>
-              <h3 className="text-2xl font-bold text-slate-900 text-center mb-2">Delete Staff Member</h3>
-              <p className="text-slate-600 text-center mb-6">
-                Are you sure you want to delete <span className="font-semibold">{selectedStaff.full_name}</span>? This action cannot be undone.
-              </p>
-              <div className="flex gap-3">
-                <button
-                  onClick={() => {
-                    setShowDeleteModal(false);
-                    setSelectedStaff(null);
-                  }}
-                  className="flex-1 px-6 py-3 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleDeleteStaff}
-                  className="flex-1 px-6 py-3 bg-rose-600 text-white rounded-lg hover:bg-rose-700 transition-colors"
-                >
-                  Delete
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+      {selectedStaff && (
+        <ConfirmModal
+          isOpen={showDeleteModal}
+          onClose={() => {
+            setShowDeleteModal(false);
+            setSelectedStaff(null);
+          }}
+          onConfirm={handleDeleteStaff}
+          title="Delete Staff Member"
+          message="Are you sure you want to delete"
+          itemName={selectedStaff.full_name}
+          confirmText="Delete"
+          type="danger"
+          icon={<Trash2 className="w-8 h-8 text-rose-600" />}
+        />
       )}
 
       {/* Reset Password Modal */}
-      {showResetPasswordModal && selectedStaff && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full">
-            <div className="p-6 border-b border-slate-200">
-              <div className="flex items-center justify-between">
-                <h3 className="text-2xl font-bold text-slate-900">Reset Password</h3>
-                <button
-                  onClick={() => {
-                    setShowResetPasswordModal(false);
-                    setSelectedStaff(null);
-                    setResetPassword('');
-                  }}
-                  className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
+      {selectedStaff && (
+        <Modal
+          isOpen={showResetPasswordModal}
+          onClose={() => {
+            setShowResetPasswordModal(false);
+            setSelectedStaff(null);
+            setResetPassword('');
+          }}
+          title="Reset Password"
+          subtitle={`Reset password for ${selectedStaff.full_name}`}
+          size="sm"
+          icon={<Key className="w-6 h-6" />}
+        >
+          <form onSubmit={handleResetPassword} className="space-y-4">
+            <p className="text-slate-600 text-sm">
+              Reset password for <span className="font-semibold">{selectedStaff.full_name}</span>
+            </p>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">New Password *</label>
+              <input
+                type="password"
+                value={resetPassword}
+                onChange={(e) => setResetPassword(e.target.value)}
+                className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+                minLength={8}
+                required
+              />
+              <p className="text-xs text-slate-500 mt-1">Minimum 8 characters</p>
             </div>
-            <form onSubmit={handleResetPassword} className="p-6 space-y-4">
-              <p className="text-slate-600 text-sm">
-                Reset password for <span className="font-semibold">{selectedStaff.full_name}</span>
-              </p>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">New Password *</label>
-                <input
-                  type="password"
-                  value={resetPassword}
-                  onChange={(e) => setResetPassword(e.target.value)}
-                  className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
-                  minLength={8}
-                  required
-                />
-                <p className="text-xs text-slate-500 mt-1">Minimum 8 characters</p>
-              </div>
-              <div className="flex gap-3 pt-4">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowResetPasswordModal(false);
-                    setSelectedStaff(null);
-                    setResetPassword('');
-                  }}
-                  className="flex-1 px-6 py-3 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 px-6 py-3 bg-gradient-to-r from-cyan-600 to-teal-600 text-white rounded-lg hover:from-cyan-700 hover:to-teal-700 transition-all duration-200 flex items-center gap-2 shadow-lg hover:shadow-xl"
-                >
-                  Reset Password
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+            <div className="flex gap-3 pt-4">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowResetPasswordModal(false);
+                  setSelectedStaff(null);
+                  setResetPassword('');
+                }}
+                className="flex-1 px-6 py-3 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="flex-1 px-6 py-3 bg-gradient-to-r from-cyan-600 to-teal-600 text-white rounded-lg hover:from-cyan-700 hover:to-teal-700 transition-all duration-200 flex items-center gap-2 shadow-lg hover:shadow-xl"
+              >
+                Reset Password
+              </button>
+            </div>
+          </form>
+
+        </Modal>
       )}
     </div>
   );
-};
+}
 
 export default Staff;

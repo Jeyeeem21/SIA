@@ -1,9 +1,30 @@
 /**
- * ConfirmModal Component  
- * Reusable confirmation modal for dangerous actions (delete, etc.)
+ * CONFIRM MODAL COMPONENT
+ * 
+ * A specialized modal for confirmation dialogs (delete, cancel, etc.)
+ * 
+ * Design Standards:
+ * - Centered icon with colored background
+ * - Clear warning message
+ * - Two-button layout: Cancel (gray) and Confirm (colored)
+ * - Consistent with unified modal design
+ * - Backdrop blur effect
+ * 
+ * Usage:
+ * <ConfirmModal
+ *   isOpen={showDeleteModal}
+ *   onClose={() => setShowDeleteModal(false)}
+ *   onConfirm={handleDelete}
+ *   title="Delete Item"
+ *   message="Are you sure you want to delete this item? This action cannot be undone."
+ *   itemName="John Doe"
+ *   confirmText="Delete"
+ *   type="danger"
+ *   icon={<Trash2 className="w-8 h-8" />}
+ * />
  */
 
-import { AlertTriangle, X } from 'lucide-react';
+import { AlertTriangle, Trash2 } from 'lucide-react';
 
 const ConfirmModal = ({
   isOpen,
@@ -11,10 +32,11 @@ const ConfirmModal = ({
   onConfirm,
   title = 'Confirm Action',
   message,
+  itemName,
   confirmText = 'Confirm',
   cancelText = 'Cancel',
   isLoading = false,
-  type = 'danger', // danger, warning, info
+  type = 'danger', // danger, warning, info, success
   icon: CustomIcon = null,
 }) => {
   if (!isOpen) return null;
@@ -31,64 +53,67 @@ const ConfirmModal = ({
       button: 'bg-amber-600 hover:bg-amber-700',
     },
     info: {
-      iconBg: 'bg-blue-100',
-      iconColor: 'text-blue-600',
-      button: 'bg-blue-600 hover:bg-blue-700',
+      iconBg: 'bg-cyan-100',
+      iconColor: 'text-cyan-600',
+      button: 'bg-gradient-to-r from-cyan-600 to-teal-600 hover:from-cyan-700 hover:to-teal-700',
+    },
+    success: {
+      iconBg: 'bg-emerald-100',
+      iconColor: 'text-emerald-600',
+      button: 'bg-emerald-600 hover:bg-emerald-700',
     },
   };
 
-  const styles = typeStyles[type];
-  const Icon = CustomIcon || AlertTriangle;
+  const styles = typeStyles[type] || typeStyles.danger;
+  const Icon = CustomIcon || (type === 'danger' ? Trash2 : AlertTriangle);
+
+  const handleBackdropClick = (e) => {
+    if (e.target === e.currentTarget && !isLoading) {
+      onClose();
+    }
+  };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto">
-      <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
-        {/* Backdrop */}
-        <div
-          className="fixed inset-0 transition-opacity bg-slate-900 bg-opacity-75"
-          onClick={onClose}
-        ></div>
-
-        {/* Modal */}
-        <div className="relative inline-block w-full max-w-md my-8 overflow-hidden text-left align-middle transition-all transform bg-white shadow-2xl rounded-2xl">
-          {/* Close button */}
-          <button
-            onClick={onClose}
-            className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition-colors"
-            disabled={isLoading}
-          >
-            <X className="w-5 h-5" />
-          </button>
-
-          {/* Content */}
-          <div className="p-6">
-            <div className="flex items-start gap-4">
-              {/* Icon */}
-              <div className={`flex-shrink-0 ${styles.iconBg} p-3 rounded-full`}>
-                <Icon className={`w-6 h-6 ${styles.iconColor}`} />
-              </div>
-
-              {/* Text */}
-              <div className="flex-1">
-                <h3 className="text-lg font-bold text-slate-900 mb-2">{title}</h3>
-                <p className="text-sm text-slate-600">{message}</p>
-              </div>
-            </div>
+    <div
+      className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+      onClick={handleBackdropClick}
+    >
+      <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full">
+        <div className="p-6">
+          {/* Icon */}
+          <div className={`flex items-center justify-center w-16 h-16 ${styles.iconBg} rounded-full mx-auto mb-4`}>
+            {typeof Icon === 'function' ? <Icon className={`w-8 h-8 ${styles.iconColor}`} /> : Icon}
           </div>
 
-          {/* Footer */}
-          <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex justify-end gap-3">
+          {/* Title */}
+          <h3 className="text-2xl font-bold text-slate-900 text-center mb-2">
+            {title}
+          </h3>
+
+          {/* Message */}
+          <p className="text-slate-600 text-center mb-6">
+            {message}
+            {itemName && (
+              <>
+                {' '}
+                <span className="font-semibold text-slate-900">{itemName}</span>?
+              </>
+            )}
+          </p>
+
+          {/* Action Buttons */}
+          <div className="flex gap-3">
             <button
               onClick={onClose}
-              className="px-6 py-2.5 bg-white border-2 border-slate-300 text-slate-700 rounded-xl font-semibold hover:bg-slate-50 transition-all"
               disabled={isLoading}
+              className="flex-1 px-6 py-3 border-2 border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {cancelText}
             </button>
             <button
               onClick={onConfirm}
-              className={`px-6 py-2.5 ${styles.button} text-white rounded-xl font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2`}
               disabled={isLoading}
+              className={`flex-1 px-6 py-3 ${styles.button} text-white rounded-lg transition-all font-semibold shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2`}
             >
               {isLoading && (
                 <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>

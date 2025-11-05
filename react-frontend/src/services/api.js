@@ -87,4 +87,46 @@ export const staffAPI = {
   resetPassword: (id, password) => api.post(`/settings/users/${id}/reset-password`, { new_password: password }),
 };
 
+// Rentals API
+export const rentalsAPI = {
+  // Properties
+  getProperties: () => api.get('/rentals/properties'),
+  getProperty: (id) => api.get(`/rentals/properties/${id}`),
+  createProperty: (data) => api.post('/rentals/properties', data),
+  updateProperty: (id, data) => api.put(`/rentals/properties/${id}`, data),
+  deleteProperty: (id) => api.delete(`/rentals/properties/${id}`),
+  
+  // Tenants
+  getTenants: () => api.get('/rentals/tenants'),
+  getTenant: (id) => api.get(`/rentals/tenants/${id}`),
+  createTenant: (data) => api.post('/rentals/tenants', data),
+  updateTenant: (id, data) => api.put(`/rentals/tenants/${id}`, data),
+  deleteTenant: (id) => api.delete(`/rentals/tenants/${id}`),
+  
+  // Contracts
+  getContracts: () => api.get('/rentals/contracts'),
+  getContract: (id) => api.get(`/rentals/contracts/${id}`),
+  createContract: (data) => api.post('/rentals/contracts', data),
+  updateContract: (id, data) => api.put(`/rentals/contracts/${id}`, data),
+  deleteContract: (id) => api.delete(`/rentals/contracts/${id}`),
+  renewContract: (id, data) => api.post(`/rentals/contracts/${id}/renew`, data),
+  
+  // Payments
+  getPayments: () => api.get('/rentals/payments'),
+  getPayment: (id) => api.get(`/rentals/payments/${id}`),
+  createPayment: (data) => api.post('/rentals/payments', data),
+  updatePayment: (id, data) => api.put(`/rentals/payments/${id}`, data),
+  deletePayment: (id) => api.delete(`/rentals/payments/${id}`),
+  
+  // Maintenance
+  getMaintenanceRequests: () => api.get('/rentals/maintenance'),
+  getMaintenanceRequest: (id) => api.get(`/rentals/maintenance/${id}`),
+  createMaintenanceRequest: (data) => api.post('/rentals/maintenance', data),
+  updateMaintenanceRequest: (id, data) => api.put(`/rentals/maintenance/${id}`, data),
+  deleteMaintenanceRequest: (id) => api.delete(`/rentals/maintenance/${id}`),
+  
+  // Statistics
+  getStats: () => api.get('/rentals/stats'),
+};
+
 export default api;

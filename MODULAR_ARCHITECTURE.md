@@ -1,5 +1,15 @@
 # Modular System Architecture
 
+## 🏢 System Modules
+
+### Core Business Modules
+1. **Inventory Management** - Products, Categories, Stock Control
+2. **Order Processing** - Orders, Order Items, Payments
+3. **Customer Management** - Customer profiles and transactions
+4. **Staff Management** - Employee information and accounts
+5. **Reports & Analytics** - Business insights and statistics
+6. **Rental Property Management** - Properties, Tenants, Contracts, Payments, Maintenance ✨ NEW
+
 ## ✅ Completed Refactoring
 
 ### 1. Utility Functions (`src/utils/`)
