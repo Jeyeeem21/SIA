@@ -193,7 +193,83 @@ const Customers = () => {
 
       {/* Customers Table */}
       <div className="bg-white rounded-xl shadow-md overflow-hidden">
-        <div className="overflow-x-auto">
+        {/* Mobile Card View */}
+        <div className="block md:hidden p-4 space-y-4">
+          {paginatedCustomers.length === 0 ? (
+            <div className="text-center text-slate-500 py-12">No customers found</div>
+          ) : (
+            paginatedCustomers.map((customer) => (
+              <div key={customer.id} className="bg-slate-50 rounded-xl p-4 space-y-3 border border-slate-200">
+                <div className="flex items-start gap-3">
+                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-cyan-500 to-teal-600 flex items-center justify-center text-white font-semibold shadow-lg flex-shrink-0">
+                    {customer.name.split(' ').map(n => n[0]).join('')}
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-slate-900">{customer.name}</h3>
+                    <span className={`inline-block mt-1 px-2 py-1 rounded-full text-xs font-medium border ${getTypeColor(customer.type)}`}>
+                      {customer.type}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-lg p-3 space-y-2">
+                  <div className="flex items-center gap-2 text-sm text-slate-600">
+                    <Mail className="w-4 h-4 text-slate-400" />
+                    <span className="truncate">{customer.email}</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-sm text-slate-600">
+                    <Phone className="w-4 h-4 text-slate-400" />
+                    <span>{customer.phone}</span>
+                  </div>
+                  <div className="text-sm text-slate-600">
+                    <span className="font-mono">{customer.studentId}</span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <div className="bg-white rounded-lg p-2">
+                    <div className="text-xs text-slate-600">Orders</div>
+                    <div className="text-lg font-bold text-slate-900">{customer.totalOrders}</div>
+                  </div>
+                  <div className="bg-white rounded-lg p-2">
+                    <div className="text-xs text-slate-600">Spent</div>
+                    <div className="text-sm font-bold text-emerald-600">₱{customer.totalSpent.toLocaleString()}</div>
+                  </div>
+                  <div className="bg-white rounded-lg p-2">
+                    <div className="text-xs text-slate-600">Last Order</div>
+                    <div className="text-xs font-medium text-slate-900">{customer.lastOrder}</div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 pt-2 border-t border-slate-200">
+                  <button 
+                    onClick={() => handleView(customer)}
+                    className="flex-1 px-3 py-2 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-lg transition-colors text-sm font-medium flex items-center justify-center gap-1"
+                  >
+                    <Eye className="w-4 h-4" />
+                    View
+                  </button>
+                  <button 
+                    onClick={() => openEditModal(customer)}
+                    className="flex-1 px-3 py-2 bg-cyan-50 hover:bg-cyan-100 text-cyan-600 rounded-lg transition-colors text-sm font-medium flex items-center justify-center gap-1"
+                  >
+                    <Edit className="w-4 h-4" />
+                    Edit
+                  </button>
+                  <button 
+                    onClick={() => openDeleteModal(customer)}
+                    className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg transition-colors"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* Desktop Table View */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full">
             <thead className="bg-gradient-to-r from-slate-50 to-slate-100 border-b border-slate-200">
               <tr>

@@ -15,10 +15,13 @@ class OrderController extends Controller
 {
     /**
      * Display a listing of the resource.
+     * Only return active orders (Pending, In Progress, Cancelled)
+     * Completed orders should be viewed in Reports page
      */
     public function index()
     {
         $orders = Order::with(['orderItems.product'])
+            ->whereIn('status', ['Pending', 'In Progress', 'Cancelled'])
             ->orderBy('created_at', 'desc')
             ->get();
         

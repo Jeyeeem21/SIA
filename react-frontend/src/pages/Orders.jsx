@@ -405,18 +405,21 @@ const Orders = () => {
           Order and Transaction Management
         </h1>
         <p className="text-slate-600">Handle customer requests and service orders.</p>
-        <p className="text-sm text-slate-500 mt-2">
-          View all incoming orders, track their progress, and confirm payments. The system automatically 
-          calculates total prices and updates the inventory.
-        </p>
+        <div className="flex items-start gap-2 mt-3 p-3 bg-teal-50 border border-teal-200 rounded-lg">
+          <CheckCircle className="w-5 h-5 text-teal-600 flex-shrink-0 mt-0.5" />
+          <div className="text-sm">
+            <p className="text-teal-900 font-medium">Active Orders Only</p>
+            <p className="text-teal-700">This page shows pending, in-progress, and cancelled orders. Completed orders are archived in the <span className="font-semibold">Reports</span> page for historical analysis.</p>
+          </div>
+        </div>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
         <div className="bg-white rounded-2xl shadow-lg p-6 border border-slate-100 hover:shadow-xl transition-all">
           <ShoppingCart className="w-8 h-8 text-cyan-600 mb-2" />
           <div className="text-2xl font-bold text-slate-900">{stats.total}</div>
-          <p className="text-sm font-semibold text-slate-600">Total Orders</p>
+          <p className="text-sm font-semibold text-slate-600">Active Orders</p>
         </div>
         <div className="bg-white rounded-2xl shadow-lg p-6 border border-slate-100 hover:shadow-xl transition-all">
           <Clock className="w-8 h-8 text-amber-600 mb-2" />
@@ -427,11 +430,6 @@ const Orders = () => {
           <Package className="w-8 h-8 text-cyan-600 mb-2" />
           <div className="text-2xl font-bold text-slate-900">{stats.inProgress}</div>
           <p className="text-sm font-semibold text-slate-600">In Progress</p>
-        </div>
-        <div className="bg-white rounded-2xl shadow-lg p-6 border border-slate-100 hover:shadow-xl transition-all">
-          <CheckCircle className="w-8 h-8 text-teal-600 mb-2" />
-          <div className="text-2xl font-bold text-slate-900">{stats.completed}</div>
-          <p className="text-sm font-semibold text-slate-600">Completed</p>
         </div>
         <div className="bg-gradient-to-br from-cyan-600 to-teal-600 rounded-2xl shadow-lg p-6 text-white hover:shadow-xl transition-all">
           <div className="text-sm font-semibold mb-1">Today's Revenue</div>
@@ -466,7 +464,6 @@ const Orders = () => {
                   <option value="All">All Status</option>
                   <option value="Pending">Pending</option>
                   <option value="In Progress">In Progress</option>
-                  <option value="Completed">Completed</option>
                   <option value="Cancelled">Cancelled</option>
                 </select>
               </div>
@@ -489,60 +486,155 @@ const Orders = () => {
           </div>
         ) : (
           <>
-            <div className="overflow-x-auto">
+            {/* Mobile Card View */}
+            <div className="block md:hidden p-4 space-y-4">
+              {paginatedOrders.length === 0 ? (
+                <div className="text-center text-slate-500 py-12">No orders found</div>
+              ) : (
+                paginatedOrders.map((order) => (
+                  <div key={order.order_id} className="bg-slate-50 rounded-xl p-4 space-y-3 border border-slate-200">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <h3 className="font-semibold text-slate-900">{order.order_number}</h3>
+                        <p className="text-sm text-slate-600">{order.customer_name || 'Walk-in'}</p>
+                      </div>
+                      <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                        order.status === 'Completed' ? 'bg-teal-100 text-teal-700' :
+                        order.status === 'In Progress' ? 'bg-cyan-100 text-cyan-700' :
+                        order.status === 'Pending' ? 'bg-amber-100 text-amber-700' :
+                        'bg-red-100 text-red-700'
+                      }`}>
+                        {order.status}
+                      </span>
+                    </div>
+
+                    <div className="bg-white rounded-lg p-3 space-y-2">
+                      <div className="text-sm">
+                        <span className="text-slate-600">Service:</span>
+                        <span className="ml-2 font-medium text-slate-900">{order.service_type}</span>
+                      </div>
+                      <div className="text-sm">
+                        <span className="text-slate-600">Items:</span>
+                        <div className="mt-1 space-y-1">
+                          {order.order_items && order.order_items.length > 0 ? (
+                            order.order_items.map((item, idx) => (
+                              <div key={idx} className="text-xs text-slate-700">
+                                • {item.product?.product_name || 'Unknown Product'} <span className="text-slate-500">(x{item.quantity})</span>
+                              </div>
+                            ))
+                          ) : (
+                            <span className="text-slate-400 text-xs">No items</span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="text-sm pt-2 border-t border-slate-200 flex justify-between items-center">
+                        <span className="text-slate-600">Total:</span>
+                        <span className="font-bold text-lg text-slate-900">₱{parseFloat(order.total_amount).toFixed(2)}</span>
+                      </div>
+                    </div>
+
+                    <div className="text-xs text-slate-500">
+                      {new Date(order.created_at).toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' })} • {new Date(order.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}
+                    </div>
+
+                    <div className="flex items-center gap-2 pt-2 border-t border-slate-200">
+                      <button 
+                        onClick={() => setViewModal({ isOpen: true, data: order })}
+                        className="flex-1 px-3 py-2 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-lg transition-colors text-sm font-medium flex items-center justify-center gap-1"
+                      >
+                        <Eye className="w-4 h-4" />
+                        View
+                      </button>
+                      {order.status !== 'Completed' && order.status !== 'Cancelled' && (
+                        <>
+                          <button 
+                            onClick={() => setEditModal({ isOpen: true, data: order })}
+                            className="flex-1 px-3 py-2 bg-amber-50 hover:bg-amber-100 text-amber-600 rounded-lg transition-colors text-sm font-medium flex items-center justify-center gap-1"
+                          >
+                            <Pencil className="w-4 h-4" />
+                            Edit
+                          </button>
+                          {(order.status === 'Pending' || order.status === 'In Progress') && (
+                            <button 
+                              onClick={() => handleOpenCompleteModal(order)}
+                              className="px-3 py-2 bg-teal-50 hover:bg-teal-100 text-teal-600 rounded-lg transition-colors"
+                            >
+                              <CheckCircle className="w-4 h-4" />
+                            </button>
+                          )}
+                          <button 
+                            onClick={() => setDeleteModal({ isOpen: true, id: order.order_id, name: order.order_number })}
+                            className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg transition-colors"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Desktop Table View */}
+            <div className="hidden md:block overflow-x-auto">
               <table className="w-full">
-                <thead className="bg-slate-50 border-b-2 border-slate-200">
-                  <tr>
-                    <th className="px-6 py-4 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Order #</th>
-                    <th className="px-6 py-4 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Customer</th>
-                    <th className="px-6 py-4 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Products</th>
-                    <th className="px-6 py-4 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Service Type</th>
-                    <th className="px-6 py-4 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Total</th>
-                    <th className="px-6 py-4 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Status</th>
-                    <th className="px-6 py-4 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Date</th>
-                    <th className="px-6 py-4 text-center text-xs font-bold text-slate-700 uppercase tracking-wider">Actions</th>
+                <thead>
+                  <tr className="bg-gradient-to-r from-slate-50 to-slate-100">
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-slate-700">Order #</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-slate-700">Customer</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-slate-700">Items</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-slate-700">Service</th>
+                    <th className="px-4 py-3 text-right text-sm font-semibold text-slate-700">Amount</th>
+                    <th className="px-4 py-3 text-center text-sm font-semibold text-slate-700">Status</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-slate-700">Date</th>
+                    <th className="px-4 py-3 text-center text-sm font-semibold text-slate-700">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-slate-200">
                   {paginatedOrders.map((order) => {
-                    const StatusIcon = getStatusIcon(order.status);
-                    
                     return (
                       <tr key={order.order_id} className="hover:bg-slate-50 transition-colors">
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="font-semibold text-slate-900">{order.order_number}</span>
+                        <td className="px-4 py-3 text-sm font-medium text-slate-900">
+                          {order.order_number}
                         </td>
-                        <td className="px-6 py-4">
-                          <span className="text-slate-700">{order.customer_name || 'Walk-in'}</span>
+                        <td className="px-4 py-3 text-sm text-slate-700">
+                          {order.customer_name || 'Walk-in'}
                         </td>
-                        <td className="px-6 py-4">
-                          <div className="text-sm text-slate-600">
-                            {order.order_items?.slice(0, 2).map((item, i) => (
-                              <div key={i}>{item.product?.product_name} (x{item.quantity})</div>
-                            ))}
-                            {order.order_items?.length > 2 && (
-                              <div className="text-xs text-slate-400">+{order.order_items.length - 2} more</div>
+                        <td className="px-4 py-3 text-sm text-slate-700">
+                          <div className="space-y-1">
+                            {order.order_items && order.order_items.length > 0 ? (
+                              order.order_items.map((item, idx) => (
+                                <div key={idx} className="text-xs">
+                                  {item.product?.product_name || 'Unknown Product'} <span className="text-slate-500">(x{item.quantity})</span>
+                                </div>
+                              ))
+                            ) : (
+                              <span className="text-slate-400 text-xs">No items</span>
                             )}
                           </div>
                         </td>
-                        <td className="px-6 py-4">
-                          <span className="text-slate-700">{order.service_type}</span>
+                        <td className="px-4 py-3 text-sm text-slate-700">
+                          {order.service_type}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="font-semibold text-slate-900">
-                            ₱{parseFloat(order.total_amount).toLocaleString()}
-                          </span>
+                        <td className="px-4 py-3 text-sm font-semibold text-right text-slate-900">
+                          ₱{parseFloat(order.total_amount).toFixed(2)}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border ${getStatusColor(order.status)}`}>
-                            <StatusIcon className="w-3.5 h-3.5" />
+                        <td className="px-4 py-3 text-center">
+                          <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                            order.status === 'Completed' ? 'bg-teal-100 text-teal-700' :
+                            order.status === 'In Progress' ? 'bg-cyan-100 text-cyan-700' :
+                            order.status === 'Pending' ? 'bg-amber-100 text-amber-700' :
+                            'bg-red-100 text-red-700'
+                          }`}>
                             {order.status}
                           </span>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600">
-                          {new Date(order.created_at).toLocaleDateString()}
+                        <td className="px-4 py-3 text-sm text-slate-600">
+                          <div>{new Date(order.created_at).toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' })}</div>
+                          <div className="text-xs text-slate-500">{new Date(order.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}</div>
                         </td>
-                        <td className="px-6 py-4">
+                        <td className="px-4 py-3">
                           <div className="flex items-center justify-center gap-2">
                         <button 
                           onClick={() => setViewModal({ isOpen: true, data: order })}

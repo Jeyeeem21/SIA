@@ -53,4 +53,38 @@ export const dashboardAPI = {
   getStats: () => api.get('/dashboard'),
 };
 
+// Reports API
+export const reportsAPI = {
+  getReports: (params) => api.get('/reports', { params }),
+  export: (type) => api.post('/reports/export', { type }),
+};
+
+// Settings API
+export const settingsAPI = {
+  // Profile
+  getProfile: () => api.get('/settings/profile'),
+  updateProfile: (data) => api.put('/settings/profile', data),
+  updatePassword: (data) => api.put('/settings/password', data),
+  
+  // Account Management
+  getUsers: () => api.get('/settings/users'),
+  createUser: (data) => api.post('/settings/users', data),
+  updateUser: (id, data) => api.put(`/settings/users/${id}`, data),
+  deleteUser: (id) => api.delete(`/settings/users/${id}`),
+  resetPassword: (id, data) => api.post(`/settings/users/${id}/reset-password`, data),
+  checkEmail: (email, userId = null) => api.post('/settings/check-email', { email, user_id: userId }),
+};
+
+// Staff API
+export const staffAPI = {
+  getAll: () => api.get('/staff'),
+  getOne: (id) => api.get(`/staff/${id}`),
+  saveStaffInfo: (data) => api.post('/staff/info', data),
+  createStaffAccount: (staffInfoId, data) => api.post(`/staff/${staffInfoId}/create-account`, data),
+  updateStaffInfo: (id, data) => api.put(`/staff/info/${id}`, data),
+  deleteStaff: (id) => api.delete(`/staff/${id}`),
+  checkEmail: (email, staffInfoId = null) => api.post('/staff/check-email', { email, staff_info_id: staffInfoId }),
+  resetPassword: (id, password) => api.post(`/settings/users/${id}/reset-password`, { new_password: password }),
+};
+
 export default api;

@@ -198,7 +198,68 @@ const Categories = () => {
 
       {/* Categories Table */}
       <div className="bg-white rounded-xl shadow-md overflow-hidden">
-        <div className="overflow-x-auto">
+        {/* Mobile Card View */}
+        <div className="block md:hidden p-4 space-y-4">
+          {loading ? (
+            <div className="flex items-center justify-center gap-2 text-slate-500 py-12">
+              <div className="w-5 h-5 border-2 border-cyan-600 border-t-transparent rounded-full animate-spin"></div>
+              <span>Loading categories...</span>
+            </div>
+          ) : paginatedCategories.length === 0 ? (
+            <div className="text-center text-slate-500 py-12">No categories found</div>
+          ) : (
+            paginatedCategories.map((category) => (
+              <div key={category.category_id} className="bg-slate-50 rounded-xl p-4 space-y-3 border border-slate-200">
+                <div className="flex items-start gap-3">
+                  <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-cyan-100 to-teal-100 flex items-center justify-center flex-shrink-0">
+                    <Tag className="w-6 h-6 text-cyan-600" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-slate-900">{category.category_name}</h3>
+                    <p className="text-sm text-slate-600 mt-1 line-clamp-2">{category.description}</p>
+                  </div>
+                </div>
+                
+                <div className="flex items-center justify-between pt-2 border-t border-slate-200 text-sm">
+                  <span className="text-slate-600">Products:</span>
+                  <span className="font-semibold text-slate-900">{category.products_count || 0} items</span>
+                </div>
+                
+                <div className="flex items-center gap-2">
+                  <span className={`px-3 py-1 rounded-full text-xs font-medium border flex-1 text-center ${getStatusColor(category.status)}`}>
+                    {category.status.toUpperCase()}
+                  </span>
+                </div>
+                
+                <div className="flex items-center gap-2 pt-2 border-t border-slate-200">
+                  <button 
+                    onClick={() => handleView(category)}
+                    className="flex-1 px-3 py-2 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-lg transition-colors text-sm font-medium flex items-center justify-center gap-1"
+                  >
+                    <Eye className="w-4 h-4" />
+                    View
+                  </button>
+                  <button 
+                    onClick={() => openEditModal(category)}
+                    className="flex-1 px-3 py-2 bg-cyan-50 hover:bg-cyan-100 text-cyan-600 rounded-lg transition-colors text-sm font-medium flex items-center justify-center gap-1"
+                  >
+                    <Edit className="w-4 h-4" />
+                    Edit
+                  </button>
+                  <button 
+                    onClick={() => openDeleteModal(category)}
+                    className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg transition-colors"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* Desktop Table View */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full">
             <thead className="bg-gradient-to-r from-slate-50 to-slate-100 border-b border-slate-200">
               <tr>

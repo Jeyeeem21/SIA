@@ -203,7 +203,94 @@ const Invoices = () => {
 
       {/* Invoices Table */}
       <div className="bg-white rounded-xl shadow-md overflow-hidden">
-        <div className="overflow-x-auto">
+        {/* Mobile Card View */}
+        <div className="block md:hidden p-4 space-y-4">
+          {paginatedInvoices.length === 0 ? (
+            <div className="text-center text-slate-500 py-12">No invoices found</div>
+          ) : (
+            paginatedInvoices.map((invoice) => (
+              <div key={invoice.id} className="bg-slate-50 rounded-xl p-4 space-y-3 border border-slate-200">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-2">
+                    <FileText className="w-5 h-5 text-cyan-600" />
+                    <div>
+                      <h3 className="font-mono text-sm font-semibold text-slate-900">{invoice.id}</h3>
+                      <p className="text-sm text-slate-600">{invoice.customer}</p>
+                    </div>
+                  </div>
+                  <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border ${getStatusColor(invoice.status)}`}>
+                    {getStatusIcon(invoice.status)}
+                    {invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1)}
+                  </span>
+                </div>
+
+                <div className="bg-white rounded-lg p-3 space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-slate-600">Student/Staff ID:</span>
+                    <span className="font-mono text-slate-900">{invoice.studentId}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-slate-600">Date:</span>
+                    <span className="text-slate-900">{invoice.date}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-slate-600">Due Date:</span>
+                    <span className="text-slate-900">{invoice.dueDate}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-slate-600">Items:</span>
+                    <span className="text-slate-900">{invoice.items} items</span>
+                  </div>
+                  <div className="flex justify-between text-sm pt-2 border-t border-slate-200">
+                    <span className="text-slate-600">Amount:</span>
+                    <span className="font-bold text-lg text-slate-900">₱{invoice.amount.toLocaleString()}</span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-200">
+                  <button 
+                    onClick={() => handleView(invoice)}
+                    className="px-3 py-2 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-lg transition-colors text-sm font-medium flex items-center justify-center gap-1"
+                  >
+                    <Eye className="w-4 h-4" />
+                    View
+                  </button>
+                  <button 
+                    onClick={() => setEditModal({ isOpen: true, data: invoice })}
+                    className="px-3 py-2 bg-cyan-50 hover:bg-cyan-100 text-cyan-600 rounded-lg transition-colors text-sm font-medium flex items-center justify-center gap-1"
+                  >
+                    <Edit className="w-4 h-4" />
+                    Edit
+                  </button>
+                  <button 
+                    onClick={() => handleDownload(invoice.id)}
+                    className="px-3 py-2 bg-teal-50 hover:bg-teal-100 text-teal-600 rounded-lg transition-colors text-sm font-medium flex items-center justify-center gap-1"
+                  >
+                    <Download className="w-4 h-4" />
+                    Download
+                  </button>
+                  <button 
+                    onClick={() => handleSend(invoice.id)}
+                    className="px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-600 rounded-lg transition-colors text-sm font-medium flex items-center justify-center gap-1"
+                  >
+                    <Send className="w-4 h-4" />
+                    Send
+                  </button>
+                  <button 
+                    onClick={() => setDeleteModal({ isOpen: true, id: invoice.id, name: invoice.id })}
+                    className="col-span-2 px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg transition-colors text-sm font-medium flex items-center justify-center gap-1"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    Delete
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* Desktop Table View */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full">
             <thead className="bg-gradient-to-r from-slate-50 to-slate-100 border-b border-slate-200">
               <tr>

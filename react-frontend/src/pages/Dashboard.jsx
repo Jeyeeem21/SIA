@@ -300,7 +300,7 @@ const Dashboard = () => {
             <p className="text-sm text-slate-500 mt-1">Best performing products by quantity sold</p>
           </div>
           <ResponsiveContainer width="100%" height={330}>
-            <BarChart data={categoryData} margin={{ top: 5, right: 30, bottom: 5, left: 20 }}>
+            <BarChart data={categoryData} margin={{ top: 10, right: 0, bottom: 5, left: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
               <XAxis 
                 dataKey="name" 
@@ -394,7 +394,47 @@ const Dashboard = () => {
               </button>
             </div>
           </div>
-          <div className="overflow-x-auto">
+          
+          {/* Mobile Card View */}
+          <div className="block md:hidden p-4 space-y-3">
+            {recentOrders.map((order) => {
+              const StatusIcon = getStatusIcon(order.status);
+              return (
+                <div key={order.id} className="bg-slate-50 rounded-xl p-4 space-y-3 border border-slate-200">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-bold text-slate-900">Order #{order.id}</span>
+                    <button 
+                      onClick={() => navigate('/orders')}
+                      className="p-2 hover:bg-cyan-100 rounded-lg transition-colors"
+                    >
+                      <Eye className="w-4 h-4 text-cyan-600" />
+                    </button>
+                  </div>
+                  
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-gradient-to-br from-cyan-500 to-teal-600 rounded-full flex items-center justify-center text-white text-sm font-bold">
+                      {order.customer.charAt(0)}
+                    </div>
+                    <div>
+                      <div className="text-sm font-medium text-slate-900">{order.customer}</div>
+                      <div className="text-xs text-slate-500">{order.time}</div>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center justify-between pt-2 border-t border-slate-200">
+                    <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border ${getStatusColor(order.status)}`}>
+                      <StatusIcon className="w-3.5 h-3.5" />
+                      {order.status}
+                    </span>
+                    <span className="text-sm font-bold text-slate-900">{order.amount}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Desktop Table View */}
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full">
               <thead className="bg-slate-50">
                 <tr>

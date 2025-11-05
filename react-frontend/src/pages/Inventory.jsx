@@ -228,7 +228,72 @@ const Inventory = () => {
         </div>
 
         {/* Table */}
-        <div className="overflow-x-auto">
+        {/* Mobile Card View */}
+        <div className="block md:hidden p-4 space-y-4">
+          {loading ? (
+            <div className="flex justify-center items-center gap-2 py-12">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-cyan-600"></div>
+              <span className="text-slate-600">Loading inventory...</span>
+            </div>
+          ) : paginatedInventory.length === 0 ? (
+            <div className="text-center text-slate-500 py-12">No inventory items found</div>
+          ) : (
+            paginatedInventory.map((item) => (
+              <div key={item.inventory_id} className="bg-slate-50 rounded-xl p-4 space-y-3 border border-slate-200">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <h3 className="font-bold text-slate-900">{item.product?.product_name || 'N/A'}</h3>
+                    <p className="text-xs text-slate-500 font-mono mt-1">INV-{item.inventory_id}</p>
+                  </div>
+                  {getStatusBadge(item.status)}
+                </div>
+
+                <div className="bg-white rounded-lg p-3 space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-slate-600">Category:</span>
+                    <span className="font-medium text-slate-900">{item.product?.category?.category_name || 'N/A'}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-slate-600">Quantity:</span>
+                    <span className={`font-bold ${item.quantity === 0 ? 'text-rose-600' : item.quantity <= item.reorder_level ? 'text-amber-600' : 'text-teal-600'}`}>
+                      {item.quantity} units
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-slate-600">Unit Price:</span>
+                    <span className="font-semibold text-slate-900">₱{parseFloat(item.product?.price || 0).toLocaleString()}</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 pt-2 border-t border-slate-200">
+                  <button 
+                    onClick={() => handleView(item)}
+                    className="flex-1 px-3 py-2 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-lg transition-colors text-sm font-medium flex items-center justify-center gap-1"
+                  >
+                    <Eye className="w-4 h-4" />
+                    View
+                  </button>
+                  <button 
+                    onClick={() => setEditModal({ isOpen: true, data: item })}
+                    className="flex-1 px-3 py-2 bg-cyan-50 hover:bg-cyan-100 text-cyan-600 rounded-lg transition-colors text-sm font-medium flex items-center justify-center gap-1"
+                  >
+                    <Edit className="w-4 h-4" />
+                    Edit
+                  </button>
+                  <button 
+                    onClick={() => openRestockModal(item)}
+                    className="px-3 py-2 bg-teal-50 hover:bg-teal-100 text-teal-600 rounded-lg transition-colors"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* Desktop Table View */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full">
             <thead className="bg-slate-50">
               <tr>

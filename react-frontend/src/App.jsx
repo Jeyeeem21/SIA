@@ -13,6 +13,7 @@ import Categories from './pages/Categories'
 import Customers from './pages/Customers'
 import Invoices from './pages/Invoices'
 import Settings from './pages/Settings'
+import Staff from './pages/Staff'
 import Toast from './components/Toast'
 
 function App() {
@@ -32,6 +33,7 @@ function App() {
           <Route path="categories" element={<Categories />} />
           <Route path="inventory" element={<Inventory />} />
           <Route path="orders" element={<Orders />} />
+          <Route path="staff" element={<Staff />} />
           <Route path="customers" element={<Customers />} />
           <Route path="reports" element={<Reports />} />
           <Route path="invoices" element={<Invoices />} />
