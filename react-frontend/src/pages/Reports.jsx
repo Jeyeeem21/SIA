@@ -105,7 +105,7 @@ const Reports = () => {
       alert('PDF export will be available in the next update. For now, use Print (Ctrl+P) and select "Save as PDF"');
     } else if (type === 'excel') {
       // Create CSV format
-      const headers = ['Order Number', 'Date', 'Customer', 'Service Type', 'Amount', 'Status'];
+      const headers = ['Order Number', 'Date', 'Customer', 'Category', 'Amount', 'Status'];
       const csvContent = [
         headers.join(','),
         ...transactions.map(t => [
@@ -404,7 +404,7 @@ const Reports = () => {
         <div className="lg:col-span-1 bg-white rounded-2xl shadow-lg p-6 border border-slate-100">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h2 className="text-lg font-bold text-slate-900">Services</h2>
+              <h2 className="text-lg font-bold text-slate-900">Categories</h2>
               <p className="text-xs text-slate-500">Distribution</p>
             </div>
             <Calendar className="w-6 h-6 text-violet-600" />
@@ -573,7 +573,7 @@ const Reports = () => {
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" />
             <input
               type="text"
-              placeholder="Search by order, customer, or service..."
+              placeholder="Search by order, customer, or category..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
@@ -690,7 +690,7 @@ const Reports = () => {
 
                 <div className="bg-white rounded-lg p-3 space-y-2">
                   <div className="text-sm">
-                    <span className="text-slate-600">Service:</span>
+                    <span className="text-slate-600">Category:</span>
                     <span className="ml-2 font-medium text-slate-900">{transaction.service_type}</span>
                   </div>
                   <div className="text-sm">
@@ -753,7 +753,7 @@ const Reports = () => {
                   <th className="px-4 py-3 text-left text-sm font-semibold text-slate-700">Order #</th>
                   <th className="px-4 py-3 text-left text-sm font-semibold text-slate-700">Customer</th>
                   <th className="px-4 py-3 text-left text-sm font-semibold text-slate-700">Items</th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-slate-700">Service</th>
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-slate-700">Category</th>
                   <th className="px-4 py-3 text-right text-sm font-semibold text-slate-700">Amount</th>
                   <th className="px-4 py-3 text-center text-sm font-semibold text-slate-700">Status</th>
                   <th className="px-4 py-3 text-left text-sm font-semibold text-slate-700">Date</th>
@@ -782,7 +782,11 @@ const Reports = () => {
                     </div>
                   </td>
                   <td className="px-4 py-3 text-sm text-slate-700">
-                    {transaction.service_type}
+                    {transaction.items && transaction.items.length > 0 ? (
+                      transaction.items.map(item => item.product_name).join(', ')
+                    ) : (
+                      <span className="text-slate-400">-</span>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-sm font-semibold text-right text-slate-900">
                     ₱{transaction.total_amount.toFixed(2)}

@@ -1,0 +1,409 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use Illuminate\Http\Request;
+use App\Models\RentalProperty;
+use App\Models\RentalTenant;
+use App\Models\RentalContract;
+use App\Models\RentalPayment;
+use App\Models\RentalMaintenance;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+
+class RentalsController extends Controller
+{
+    // ==================== PROPERTIES ====================
+
+    public function getProperties()
+    {
+        $properties = RentalProperty::with(['contracts' => function($query) {
+            $query->where('status', 'Active')->with('tenant');
+        }])->get();
+
+        // Add computed fields for frontend compatibility
+        $properties = $properties->map(function ($property) {
+            $activeContract = $property->contracts->first();
+
+            return [
+                'id' => $property->id,
+                'name' => $property->name,
+                'type' => $property->type,
+                'location' => $property->location,
+                'size' => $property->size,
+                'monthlyRate' => $property->monthly_rate,
+                'status' => $property->status,
+                'tenant' => $activeContract && $activeContract->tenant ? $activeContract->tenant->name : null,
+                'contractEnd' => $activeContract && $activeContract->end_date ? $activeContract->end_date->format('Y-m-d') : null,
+            ];
+        });
+
+        return response()->json($properties);
+    }
+
+    public function createProperty(Request $request)
+    {
+        $request->validate([
+            'name' => 'required|string|max:255',
+            'type' => 'required|in:Commercial,Residential',
+            'location' => 'required|string|max:255',
+            'size' => 'required|string|max:255',
+            'monthly_rate' => 'required|numeric|min:0',
+            'status' => 'required|in:Occupied,Vacant,Under Maintenance',
+        ]);
+
+        $property = RentalProperty::create([
+            'name' => $request->name,
+            'type' => $request->type,
+            'location' => $request->location,
+            'size' => $request->size,
+            'monthly_rate' => $request->monthly_rate,
+            'status' => $request->status,
+        ]);
+
+        return response()->json($property, 201);
+    }
+
+    public function updateProperty(Request $request, RentalProperty $property)
+    {
+        $request->validate([
+            'name' => 'required|string|max:255',
+            'type' => 'required|in:Commercial,Residential',
+            'location' => 'required|string|max:255',
+            'size' => 'required|string|max:255',
+            'monthly_rate' => 'required|numeric|min:0',
+            'status' => 'required|in:Occupied,Vacant,Under Maintenance',
+        ]);
+
+        $property->update([
+            'name' => $request->name,
+            'type' => $request->type,
+            'location' => $request->location,
+            'size' => $request->size,
+            'monthly_rate' => $request->monthly_rate,
+            'status' => $request->status,
+        ]);
+
+        return response()->json($property);
+    }
+
+    public function deleteProperty(RentalProperty $property)
+    {
+        // Check if property has active contracts
+        if ($property->contracts()->where('status', 'Active')->exists()) {
+            return response()->json(['error' => 'Cannot delete property with active contracts'], 400);
+        }
+
+        $property->delete();
+        return response()->json(['message' => 'Property deleted successfully']);
+    }
+
+    // ==================== TENANTS ====================
+
+    public function getTenants()
+    {
+        $tenants = RentalTenant::with(['propertyRented'])->get();
+
+        // Add computed fields for frontend compatibility
+        $tenants = $tenants->map(function ($tenant) {
+            return [
+                'id' => $tenant->id,
+                'name' => $tenant->name,
+                'businessName' => $tenant->business_name,
+                'contactNumber' => $tenant->contact_number,
+                'email' => $tenant->email,
+                'propertyRented' => $tenant->propertyRented?->name,
+                'contractStatus' => $tenant->contract_status,
+                'depositPaid' => $tenant->deposit_paid,
+                'lastPayment' => $tenant->last_payment_date?->format('Y-m-d'),
+            ];
+        });
+
+        return response()->json($tenants);
+    }
+
+    public function createTenant(Request $request)
+    {
+        $request->validate([
+            'name' => 'required|string|max:255',
+            'business_name' => 'nullable|string|max:255',
+            'contact_number' => 'required|string|max:20',
+            'email' => 'required|email',
+            'property_rented_id' => 'nullable|exists:rental_properties,id',
+            'contract_status' => 'required|in:Active,Inactive,Expired',
+            'deposit_paid' => 'required|numeric|min:0',
+        ]);
+
+        $tenant = RentalTenant::create($request->all());
+        return response()->json($tenant, 201);
+    }
+
+    public function updateTenant(Request $request, RentalTenant $tenant)
+    {
+        $request->validate([
+            'name' => 'required|string|max:255',
+            'business_name' => 'nullable|string|max:255',
+            'contact_number' => 'required|string|max:20',
+            'email' => 'required|email',
+            'property_rented_id' => 'nullable|exists:rental_properties,id',
+            'contract_status' => 'required|in:Active,Inactive,Expired',
+            'deposit_paid' => 'required|numeric|min:0',
+        ]);
+
+        $tenant->update($request->all());
+        return response()->json($tenant);
+    }
+
+    public function deleteTenant(RentalTenant $tenant)
+    {
+        // Check if tenant has active contracts
+        if ($tenant->contracts()->where('status', 'Active')->exists()) {
+            return response()->json(['error' => 'Cannot delete tenant with active contracts'], 400);
+        }
+
+        $tenant->delete();
+        return response()->json(['message' => 'Tenant deleted successfully']);
+    }
+
+    // ==================== CONTRACTS ====================
+
+    public function getContracts()
+    {
+        $contracts = RentalContract::with(['property', 'tenant'])->get();
+
+        // Add computed fields for frontend compatibility
+        $contracts = $contracts->map(function ($contract) {
+            return [
+                'id' => $contract->id,
+                'contractNumber' => $contract->contract_number,
+                'property' => $contract->property?->name,
+                'propertyId' => $contract->property_id,
+                'tenant' => $contract->tenant?->name,
+                'tenantId' => $contract->tenant_id,
+                'startDate' => $contract->start_date->format('Y-m-d'),
+                'endDate' => $contract->end_date->format('Y-m-d'),
+                'monthlyRent' => $contract->monthly_rent,
+                'deposit' => $contract->deposit,
+                'status' => $contract->status,
+                'daysRemaining' => $contract->getDaysRemaining(),
+            ];
+        });
+
+        return response()->json($contracts);
+    }
+
+    public function createContract(Request $request)
+    {
+        $request->validate([
+            'contract_number' => 'required|string',
+            'property_id' => 'required|exists:rental_properties,id',
+            'tenant_id' => 'required|exists:rental_tenants,id',
+            'start_date' => 'required|date',
+            'end_date' => 'required|date|after:start_date',
+            'monthly_rent' => 'required|numeric|min:0',
+            'deposit' => 'required|numeric|min:0',
+            'status' => 'required|in:Active,Expired,Terminated',
+        ]);
+
+        // Only check if THIS SPECIFIC property already has an active contract
+        // (A property can only be rented to ONE tenant at a time)
+        if (RentalContract::where('property_id', $request->property_id)
+            ->where('status', 'Active')
+            ->exists()) {
+            return response()->json([
+                'message' => 'This property is already occupied by another tenant'
+            ], 422);
+        }
+
+        // Allow tenants to rent multiple properties (remove this check)
+        // A tenant can rent multiple properties at the same time
+
+        $contract = RentalContract::create($request->all());
+        return response()->json($contract, 201);
+    }
+
+    public function updateContract(Request $request, RentalContract $contract)
+    {
+        $request->validate([
+            'contract_number' => 'required|string',
+            'property_id' => 'required|exists:rental_properties,id',
+            'tenant_id' => 'required|exists:rental_tenants,id',
+            'start_date' => 'required|date',
+            'end_date' => 'required|date|after:start_date',
+            'monthly_rent' => 'required|numeric|min:0',
+            'deposit' => 'required|numeric|min:0',
+            'status' => 'required|in:Active,Expired,Terminated',
+        ]);
+
+        $contract->update($request->all());
+        return response()->json($contract);
+    }
+
+    public function deleteContract(RentalContract $contract)
+    {
+        $contract->delete();
+        return response()->json(['message' => 'Contract deleted successfully']);
+    }
+
+    // ==================== PAYMENTS ====================
+
+    public function getPayments()
+    {
+        $payments = RentalPayment::with(['tenant', 'property'])->get();
+
+        // Add computed fields for frontend compatibility
+        $payments = $payments->map(function ($payment) {
+            return [
+                'id' => $payment->id,
+                'paymentNumber' => $payment->payment_number,
+                'tenant' => $payment->tenant?->name,
+                'property' => $payment->property?->name,
+                'amount' => $payment->amount,
+                'paymentDate' => $payment->payment_date?->format('Y-m-d'),
+                'month' => $payment->month,
+                'method' => $payment->method,
+                'status' => $payment->status,
+            ];
+        });
+
+        return response()->json($payments);
+    }
+
+    public function createPayment(Request $request)
+    {
+        $request->validate([
+            'tenant_id' => 'required|exists:rental_tenants,id',
+            'property_id' => 'required|exists:rental_properties,id',
+            'amount' => 'required|numeric|min:0',
+            'payment_date' => 'nullable|date',
+            'month' => 'required|string|max:255',
+            'method' => 'nullable|string|max:255',
+            'status' => 'required|in:Paid,Pending,Overdue',
+        ]);
+
+        // Auto-generate payment number
+        $lastPayment = RentalPayment::orderBy('id', 'desc')->first();
+        $nextNumber = $lastPayment ? intval(substr($lastPayment->payment_number, 4)) + 1 : 1;
+        $paymentNumber = 'PAY-' . str_pad($nextNumber, 6, '0', STR_PAD_LEFT);
+
+        $paymentData = $request->all();
+        $paymentData['payment_number'] = $paymentNumber;
+
+        $payment = RentalPayment::create($paymentData);
+        return response()->json($payment, 201);
+    }
+
+    public function updatePayment(Request $request, RentalPayment $payment)
+    {
+        $request->validate([
+            'tenant_id' => 'required|exists:rental_tenants,id',
+            'property_id' => 'required|exists:rental_properties,id',
+            'amount' => 'required|numeric|min:0',
+            'payment_date' => 'nullable|date',
+            'month' => 'required|string|max:255',
+            'method' => 'nullable|string|max:255',
+            'status' => 'required|in:Paid,Pending,Overdue',
+        ]);
+
+        // Don't allow payment_number to be updated
+        $payment->update($request->except('payment_number'));
+        return response()->json($payment);
+    }
+
+    public function deletePayment(RentalPayment $payment)
+    {
+        $payment->delete();
+        return response()->json(['message' => 'Payment deleted successfully']);
+    }
+
+    // ==================== MAINTENANCE ====================
+
+    public function getMaintenance()
+    {
+        $maintenance = RentalMaintenance::with(['property', 'tenant'])->get();
+
+        // Add computed fields for frontend compatibility
+        $maintenance = $maintenance->map(function ($item) {
+            return [
+                'id' => $item->id,
+                'requestNumber' => $item->request_number,
+                'property' => $item->property?->name,
+                'tenant' => $item->tenant?->name,
+                'issue' => $item->issue,
+                'priority' => $item->priority,
+                'status' => $item->status,
+                'dateReported' => $item->date_reported?->format('Y-m-d'),
+                'assignedTo' => $item->assigned_to,
+            ];
+        });
+
+        return response()->json($maintenance);
+    }
+
+    public function createMaintenance(Request $request)
+    {
+        $request->validate([
+            'property_id' => 'required|exists:rental_properties,id',
+            'tenant_id' => 'required|exists:rental_tenants,id',
+            'issue' => 'required|string',
+            'priority' => 'required|in:Low,Medium,High,Critical',
+            'status' => 'required|in:Pending,In Progress,Completed',
+            'date_reported' => 'required|date',
+            'assigned_to' => 'nullable|string|max:255',
+        ]);
+
+        // Auto-generate request number
+        $lastMaintenance = RentalMaintenance::orderBy('id', 'desc')->first();
+        $nextNumber = $lastMaintenance ? intval(substr($lastMaintenance->request_number, 4)) + 1 : 1;
+        $requestNumber = 'REQ-' . str_pad($nextNumber, 6, '0', STR_PAD_LEFT);
+
+        $maintenanceData = $request->all();
+        $maintenanceData['request_number'] = $requestNumber;
+
+        $maintenance = RentalMaintenance::create($maintenanceData);
+        return response()->json($maintenance, 201);
+    }
+
+    public function updateMaintenance(Request $request, RentalMaintenance $maintenance)
+    {
+        $request->validate([
+            'property_id' => 'required|exists:rental_properties,id',
+            'tenant_id' => 'required|exists:rental_tenants,id',
+            'issue' => 'required|string',
+            'priority' => 'required|in:Low,Medium,High,Critical',
+            'status' => 'required|in:Pending,In Progress,Completed',
+            'date_reported' => 'required|date',
+            'assigned_to' => 'nullable|string|max:255',
+        ]);
+
+        // Don't allow request_number to be updated
+        $maintenance->update($request->except('request_number'));
+        return response()->json($maintenance);
+    }
+
+    public function deleteMaintenance(RentalMaintenance $maintenance)
+    {
+        $maintenance->delete();
+        return response()->json(['message' => 'Maintenance request deleted successfully']);
+    }
+
+    // ==================== DASHBOARD STATS ====================
+
+    public function getStats()
+    {
+        $stats = [
+            'totalProperties' => RentalProperty::count(),
+            'occupiedProperties' => RentalProperty::where('status', 'Occupied')->count(),
+            'totalTenants' => RentalTenant::count(),
+            'activeContracts' => RentalContract::where('status', 'Active')->count(),
+            'pendingPayments' => RentalPayment::where('status', 'Pending')->count(),
+            'maintenanceRequests' => RentalMaintenance::where('status', '!=', 'Completed')->count(),
+            'monthlyRevenue' => RentalPayment::where('status', 'Paid')
+                ->whereMonth('payment_date', now()->month)
+                ->whereYear('payment_date', now()->year)
+                ->sum('amount'),
+        ];
+
+        return response()->json($stats);
+    }
+}

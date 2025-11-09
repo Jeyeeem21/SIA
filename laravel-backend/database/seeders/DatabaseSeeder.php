@@ -32,6 +32,11 @@ class DatabaseSeeder extends Seeder
             CategorySeeder::class,
             ProductSeeder::class,
             InventorySeeder::class,
+            RentalPropertiesSeeder::class,
+            RentalTenantsSeeder::class,
+            RentalContractsSeeder::class,
+            RentalPaymentsSeeder::class,
+            RentalMaintenanceSeeder::class,
         ]);
     }
 }

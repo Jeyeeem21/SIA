@@ -17,14 +17,20 @@ class Order extends Model
         'notes',
         'preferred_pickup_date',
         'completed_date',
+        'is_voided',
+        'void_reason',
+        'voided_by',
+        'voided_at',
     ];
 
     protected $casts = [
         'total_amount' => 'decimal:2',
         'preferred_pickup_date' => 'date',
         'completed_date' => 'datetime',
+        'voided_at' => 'datetime',
         'status' => 'string',
         'service_type' => 'string',
+        'is_voided' => 'boolean',
     ];
 
     // Relationships

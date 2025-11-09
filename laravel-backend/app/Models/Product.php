@@ -17,12 +17,16 @@ class Product extends Model
         'cost',
         'unit',
         'image_url',
+        'expiration_date',
+        'is_active',
         'status',
     ];
 
     protected $casts = [
         'price' => 'decimal:2',
         'cost' => 'decimal:2',
+        'expiration_date' => 'date',
+        'is_active' => 'boolean',
         'status' => 'string',
     ];
 
@@ -35,6 +39,11 @@ class Product extends Model
     public function inventory()
     {
         return $this->hasOne(Inventory::class, 'product_id', 'product_id');
+    }
+
+    public function transactions()
+    {
+        return $this->hasMany(ProductTransaction::class, 'product_id', 'product_id');
     }
 
     public function orderItems()

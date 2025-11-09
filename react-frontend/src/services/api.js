@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE_URL = 'http://localhost:8000/api';
+const API_BASE_URL = 'http://127.0.0.1:8000/api';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -8,7 +8,59 @@ const api = axios.create({
     'Content-Type': 'application/json',
     'Accept': 'application/json',
   },
+  withCredentials: true, // For Laravel Sanctum
 });
+
+// Add token to requests if it exists
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('auth_token');
+  const tokenExpiry = localStorage.getItem('token_expiry');
+  
+  // Check if token is expired before making request
+  if (tokenExpiry) {
+    const now = new Date().getTime();
+    if (now > parseInt(tokenExpiry)) {
+      // Token expired, clear storage and redirect to login
+      localStorage.removeItem('user_data');
+      localStorage.removeItem('auth_token');
+      localStorage.removeItem('token_expiry');
+      localStorage.removeItem('login_timestamp');
+      window.location.href = '/login';
+      return Promise.reject(new Error('Token expired'));
+    }
+  }
+  
+  if (token && token !== 'session_based') {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+}, (error) => {
+  return Promise.reject(error);
+});
+
+// Add response interceptor to handle 401 Unauthorized responses
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      // Token is invalid or expired, clear everything and redirect to login
+      localStorage.removeItem('user_data');
+      localStorage.removeItem('auth_token');
+      localStorage.removeItem('token_expiry');
+      localStorage.removeItem('login_timestamp');
+      delete axios.defaults.headers.common['Authorization'];
+      window.location.href = '/login';
+    }
+    return Promise.reject(error);
+  }
+);
+
+// Auth API (all under /api prefix, no CSRF issues)
+export const authAPI = {
+  login: (email, password) => api.post('/login', { email, password }),
+  logout: () => api.post('/logout'),
+  getUser: () => api.get('/user'),
+};
 
 // Categories API
 export const categoriesAPI = {
@@ -42,10 +94,13 @@ export const inventoryAPI = {
 export const ordersAPI = {
   getAll: () => api.get('/orders'),
   getById: (id) => api.get(`/orders/${id}`),
+  searchByOrderNumber: (orderNumber) => api.get(`/orders?order_number=${orderNumber}`),
   create: (data) => api.post('/orders', data),
   update: (id, data) => api.put(`/orders/${id}`, data),
   delete: (id) => api.delete(`/orders/${id}`),
   complete: (id, paymentData) => api.post(`/orders/${id}/complete`, paymentData),
+  voidOrder: (id, data) => api.post(`/orders/${id}/void`, data),
+  getSalesHistory: (params) => api.get('/orders/sales/history', { params }),
 };
 
 // Dashboard API
@@ -127,6 +182,20 @@ export const rentalsAPI = {
   
   // Statistics
   getStats: () => api.get('/rentals/stats'),
+};
+
+// Sales Analytics API
+export const salesAnalyticsAPI = {
+  getAnalytics: (period, date) => api.get('/sales-analytics', { params: { period, date } }),
+  getOverview: () => api.get('/sales-analytics/overview'),
+  updateSummary: () => api.post('/sales-analytics/update-summary'),
+};
+
+// Product Transactions API (Inventory Tracking)
+export const productTransactionsAPI = {
+  getAll: (params) => api.get('/product-transactions', { params }),
+  getByProduct: (productId) => api.get(`/product-transactions/product/${productId}`),
+  getGrowthRates: (period = 'daily') => api.get('/product-transactions/growth-rates', { params: { period } }),
 };
 
 export default api;

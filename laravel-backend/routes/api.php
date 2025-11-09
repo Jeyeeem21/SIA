@@ -2,12 +2,20 @@
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\AuthController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\InventoryController;
 use App\Http\Controllers\OrderController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\RentalsController;
 use App\Http\Controllers\ReportsController;
+use App\Http\Controllers\SalesAnalyticsController;
+
+// Authentication routes (public)
+Route::post('login', [AuthController::class, 'login']);
+Route::post('logout', [AuthController::class, 'logout'])->middleware('auth:sanctum');
+Route::get('user', [AuthController::class, 'user'])->middleware('auth:sanctum');
 
 Route::get('/user', function (Request $request) {
     return $request->user();
@@ -27,12 +35,24 @@ Route::apiResource('inventories', InventoryController::class);
 Route::post('inventories/{inventory}/restock', [InventoryController::class, 'restock']);
 
 // Orders API routes
-Route::apiResource('orders', OrderController::class);
+Route::get('orders/sales/history', [OrderController::class, 'getSalesHistory']);
 Route::post('orders/{order}/complete', [OrderController::class, 'complete']);
+Route::post('orders/{order}/void', [OrderController::class, 'voidOrder']);
+Route::apiResource('orders', OrderController::class);
 
 // Reports API routes
 Route::get('reports', [ReportsController::class, 'index']);
 Route::post('reports/export', [ReportsController::class, 'export']);
+
+// Sales Analytics API routes
+Route::get('sales-analytics', [SalesAnalyticsController::class, 'index']);
+Route::get('sales-analytics/overview', [SalesAnalyticsController::class, 'overview']);
+Route::post('sales-analytics/update-summary', [SalesAnalyticsController::class, 'updateSalesSummary']);
+
+// Product Transactions (Inventory Tracking) API routes
+Route::get('product-transactions', [\App\Http\Controllers\ProductTransactionController::class, 'index']);
+Route::get('product-transactions/product/{productId}', [\App\Http\Controllers\ProductTransactionController::class, 'getByProduct']);
+Route::get('product-transactions/growth-rates', [\App\Http\Controllers\ProductTransactionController::class, 'getProductGrowthRates']);
 
 // Settings API routes
 Route::prefix('settings')->group(function () {
@@ -58,4 +78,40 @@ Route::prefix('staff')->group(function () {
     Route::delete('/{id}', [\App\Http\Controllers\StaffController::class, 'destroy']);
     Route::get('/{id}', [\App\Http\Controllers\StaffController::class, 'show']);
     Route::post('/check-email', [\App\Http\Controllers\StaffController::class, 'checkEmail']);
+});
+
+// Rentals API routes
+Route::prefix('rentals')->group(function () {
+    // Properties
+    Route::get('properties', [RentalsController::class, 'getProperties']);
+    Route::post('properties', [RentalsController::class, 'createProperty']);
+    Route::put('properties/{property}', [RentalsController::class, 'updateProperty']);
+    Route::delete('properties/{property}', [RentalsController::class, 'deleteProperty']);
+
+    // Tenants
+    Route::get('tenants', [RentalsController::class, 'getTenants']);
+    Route::post('tenants', [RentalsController::class, 'createTenant']);
+    Route::put('tenants/{tenant}', [RentalsController::class, 'updateTenant']);
+    Route::delete('tenants/{tenant}', [RentalsController::class, 'deleteTenant']);
+
+    // Contracts
+    Route::get('contracts', [RentalsController::class, 'getContracts']);
+    Route::post('contracts', [RentalsController::class, 'createContract']);
+    Route::put('contracts/{contract}', [RentalsController::class, 'updateContract']);
+    Route::delete('contracts/{contract}', [RentalsController::class, 'deleteContract']);
+
+    // Payments
+    Route::get('payments', [RentalsController::class, 'getPayments']);
+    Route::post('payments', [RentalsController::class, 'createPayment']);
+    Route::put('payments/{payment}', [RentalsController::class, 'updatePayment']);
+    Route::delete('payments/{payment}', [RentalsController::class, 'deletePayment']);
+
+    // Maintenance
+    Route::get('maintenance', [RentalsController::class, 'getMaintenance']);
+    Route::post('maintenance', [RentalsController::class, 'createMaintenance']);
+    Route::put('maintenance/{maintenance}', [RentalsController::class, 'updateMaintenance']);
+    Route::delete('maintenance/{maintenance}', [RentalsController::class, 'deleteMaintenance']);
+
+    // Stats
+    Route::get('stats', [RentalsController::class, 'getStats']);
 });

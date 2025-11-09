@@ -18,17 +18,15 @@ return new class extends Migration
             $table->string('password');
             $table->string('phone', 20)->nullable();
             $table->enum('role', ['Customer', 'Staff', 'Admin', 'Faculty'])->default('Customer');
-            $table->string('student_id', 50)->unique()->nullable();
-            $table->string('avatar_url')->nullable();
+
             $table->enum('status', ['active', 'inactive', 'suspended'])->default('active');
             $table->boolean('email_verified')->default(false);
             $table->timestamp('email_verified_at')->nullable();
-            $table->timestamp('last_login')->nullable();
+  
             $table->rememberToken();
             $table->timestamps();
             
             $table->index('email');
-            $table->index('student_id');
             $table->index('role');
         });
 

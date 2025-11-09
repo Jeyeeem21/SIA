@@ -30,14 +30,15 @@ class ProductController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'product_name' => 'required|string|max:100|unique:products',
-            'barcode' => 'required|string|max:50|unique:products',
+            'product_name' => 'required|string|max:100|unique:products,product_name',
+            'barcode' => 'required|string|max:50|unique:products,barcode',
             'category_id' => 'required|exists:categories,category_id',
             'description' => 'nullable|string',
             'price' => 'required|numeric|min:0',
             'cost' => 'nullable|numeric|min:0',
             'unit' => 'required|string|max:20',
             'image_url' => 'nullable|string',
+            'expiration_date' => 'nullable|date',
             'status' => 'nullable|in:active,inactive',
         ]);
 
@@ -49,6 +50,15 @@ class ProductController extends Controller
             'reorder_level' => 20,
             'reorder_quantity' => 50,
         ]);
+
+        // Auto-set is_active: true if (not expired OR no expiry) AND has stock, else false
+        $isNotExpired = true;
+        if ($product->expiration_date) {
+            $isNotExpired = \Carbon\Carbon::parse($product->expiration_date)->isFuture();
+        }
+        $hasStock = $product->inventory->quantity > 0;
+        $product->is_active = $isNotExpired && $hasStock;
+        $product->save();
         
         return response()->json($product->load('category', 'inventory'), 201);
     }
@@ -75,10 +85,21 @@ class ProductController extends Controller
             'cost' => 'nullable|numeric|min:0',
             'unit' => 'required|string|max:20',
             'image_url' => 'nullable|string',
+            'expiration_date' => 'nullable|date',
             'status' => 'nullable|in:active,inactive',
         ]);
 
         $product->update($validated);
+        $product->refresh()->load('inventory');
+
+        // Auto-set is_active: true if (not expired OR no expiry) AND has stock, else false
+        $isNotExpired = true;
+        if ($product->expiration_date) {
+            $isNotExpired = \Carbon\Carbon::parse($product->expiration_date)->isFuture();
+        }
+        $hasStock = $product->inventory->quantity > 0;
+        $product->is_active = $isNotExpired && $hasStock;
+        $product->save();
         return response()->json($product->load('category'));
     }
 

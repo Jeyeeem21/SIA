@@ -119,6 +119,13 @@ const Products = () => {
         { value: 'pack', label: 'Pack' }
       ]
     },
+    { key: 'expiration_date', label: 'Expiration Date', type: 'date', required: false, placeholder: 'Select expiration date' },
+    { key: 'status', label: 'Status', type: 'select', required: true,
+      options: [
+        { value: 'active', label: 'Active' },
+        { value: 'inactive', label: 'Inactive' }
+      ]
+    },
     { key: 'description', label: 'Description', type: 'textarea', fullWidth: true, rows: 3, placeholder: 'Product description...' }
   ];
 
@@ -130,7 +137,9 @@ const Products = () => {
     { key: 'cost', label: 'Cost Price', render: (value) => value ? `₱${parseFloat(value).toLocaleString()}` : 'N/A' },
     { key: 'unit', label: 'Unit' },
     { key: 'inventory', label: 'Current Stock', render: (value) => `${value?.quantity || 0} units` },
+    { key: 'expiration_date', label: 'Expiration Date', render: (value) => value ? new Date(value).toLocaleDateString() : 'No expiration' },
     { key: 'status', label: 'Status', render: (value) => value.toUpperCase() },
+    { key: 'is_active', label: 'Active', render: (value) => value ? 'Yes' : 'No' },
     { key: 'description', label: 'Description' }
   ];
 
@@ -378,6 +387,9 @@ const Products = () => {
                   Stock
                 </th>
                 <th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">
+                  Expiration
+                </th>
+                <th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">
                   Status
                 </th>
                 <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">
@@ -388,7 +400,7 @@ const Products = () => {
             <tbody className="divide-y divide-slate-200">
               {loading ? (
                 <tr>
-                  <td colSpan="7" className="px-6 py-12 text-center">
+                  <td colSpan="8" className="px-6 py-12 text-center">
                     <div className="flex items-center justify-center gap-2 text-slate-500">
                       <div className="w-5 h-5 border-2 border-cyan-600 border-t-transparent rounded-full animate-spin"></div>
                       <span>Loading products...</span>
@@ -397,7 +409,7 @@ const Products = () => {
                 </tr>
               ) : paginatedProducts.length === 0 ? (
                 <tr>
-                  <td colSpan="7" className="px-6 py-12 text-center text-slate-500">
+                  <td colSpan="8" className="px-6 py-12 text-center text-slate-500">
                     No products found
                   </td>
                 </tr>
@@ -425,8 +437,17 @@ const Products = () => {
                     </span>
                   </td>
                   <td className="px-6 py-4">
-                    <span className={`px-3 py-1 rounded-full text-xs font-medium border ${getStatusColor(product.status)}`}>
-                      {getStatusText(product.status)}
+                    {product.expiration_date ? (
+                      <span className={`text-sm ${new Date(product.expiration_date) < new Date() ? 'text-rose-600 font-semibold' : 'text-slate-600'}`}>
+                        {new Date(product.expiration_date).toLocaleDateString()}
+                      </span>
+                    ) : (
+                      <span className="text-slate-400 text-sm">No expiry</span>
+                    )}
+                  </td>
+                  <td className="px-6 py-4">
+                    <span className={`px-3 py-1 rounded-full text-xs font-medium border ${product.is_active ? 'bg-emerald-100 text-emerald-700 border-emerald-300' : 'bg-slate-100 text-slate-600 border-slate-300'}`}>
+                      {product.is_active ? 'Active' : 'Inactive'}
                     </span>
                   </td>
                   <td className="px-6 py-4">

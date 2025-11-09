@@ -14,10 +14,15 @@ import {
   Eye,
   MoreVertical,
   Box,
-  TrendingDown
+  TrendingDown,
+  Calendar,
+  CalendarDays,
+  CalendarRange,
+  X,
+  AlertCircle
 } from 'lucide-react';
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Area, AreaChart } from 'recharts';
-import { dashboardAPI } from '../services/api';
+import { dashboardAPI, salesAnalyticsAPI } from '../services/api';
 import toast from 'react-hot-toast';
 
 const Dashboard = () => {
@@ -25,10 +30,52 @@ const Dashboard = () => {
   const [dashboardData, setDashboardData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [salesPeriod, setSalesPeriod] = useState('daily'); // 'daily', 'weekly', 'monthly'
+  const [salesAnalytics, setSalesAnalytics] = useState(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(true);
+  
+  // Low stock notification state
+  const [currentNotificationIndex, setCurrentNotificationIndex] = useState(0);
+  const [showNotification, setShowNotification] = useState(false);
 
   useEffect(() => {
     fetchDashboardData();
+    fetchSalesAnalytics();
   }, []);
+
+  // Check for low stock every 10 seconds, show for 5 seconds
+  useEffect(() => {
+    if (!dashboardData?.low_stock_items || dashboardData.low_stock_items.length === 0) {
+      setShowNotification(false);
+      return;
+    }
+
+    let hideTimer;
+    let cycleTimer;
+
+    // Function to show and cycle notifications
+    const cycleNotification = () => {
+      setShowNotification(true);
+
+      // Hide after 5 seconds and move to next item
+      hideTimer = setTimeout(() => {
+        setShowNotification(false);
+        setCurrentNotificationIndex((prev) => 
+          (prev + 1) % dashboardData.low_stock_items.length
+        );
+      }, 5000);
+    };
+
+    // Show first notification immediately
+    cycleNotification();
+
+    // Then cycle every 10 seconds
+    cycleTimer = setInterval(cycleNotification, 10000);
+
+    return () => {
+      clearTimeout(hideTimer);
+      clearInterval(cycleTimer);
+    };
+  }, [dashboardData]);
 
   const fetchDashboardData = async () => {
     try {
@@ -40,6 +87,19 @@ const Dashboard = () => {
       console.error('Error fetching dashboard:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchSalesAnalytics = async () => {
+    try {
+      setAnalyticsLoading(true);
+      const response = await salesAnalyticsAPI.getOverview();
+      setSalesAnalytics(response.data);
+    } catch (error) {
+      console.error('Error fetching sales analytics:', error);
+      toast.error('Failed to load sales analytics');
+    } finally {
+      setAnalyticsLoading(false);
     }
   };
 
@@ -225,6 +285,203 @@ const Dashboard = () => {
           );
         })}
       </div>
+
+      {/* Sales Analytics - Daily, Monthly, Yearly */}
+      {!analyticsLoading && salesAnalytics && (
+        <div className="mb-8">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-2xl font-bold text-slate-900 flex items-center gap-3">
+              <TrendingUp className="w-7 h-7 text-cyan-600" />
+              Sales Performance & Growth Rate
+            </h2>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* Daily Sales */}
+            <div className="bg-gradient-to-br from-blue-50 to-cyan-50 rounded-2xl shadow-lg p-6 border border-blue-100 hover:shadow-2xl transition-all duration-300">
+              <div className="flex items-center justify-between mb-4">
+                <div className="bg-blue-100 p-3 rounded-xl">
+                  <Calendar className="w-6 h-6 text-blue-600" />
+                </div>
+                <span className="text-sm font-semibold text-blue-600 uppercase tracking-wide">Daily</span>
+              </div>
+              
+              <div className="space-y-4">
+                <div>
+                  <p className="text-sm text-slate-600 mb-1">Today's Sales</p>
+                  <p className="text-3xl font-bold text-slate-900">
+                    ₱{salesAnalytics.daily.today.total_sales.toLocaleString()}
+                  </p>
+                  <p className="text-xs text-slate-500 mt-1">
+                    {salesAnalytics.daily.today.total_orders} orders
+                  </p>
+                </div>
+
+                <div className="border-t border-blue-200 pt-4">
+                  <p className="text-sm text-slate-600 mb-1">Yesterday</p>
+                  <p className="text-xl font-semibold text-slate-700">
+                    ₱{salesAnalytics.daily.yesterday.total_sales.toLocaleString()}
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    {salesAnalytics.daily.yesterday.total_orders} orders
+                  </p>
+                </div>
+
+                <div className={`flex items-center gap-2 p-3 rounded-lg ${
+                  salesAnalytics.daily.trend === 'up' 
+                    ? 'bg-emerald-100 border border-emerald-200' 
+                    : salesAnalytics.daily.trend === 'down'
+                    ? 'bg-rose-100 border border-rose-200'
+                    : 'bg-slate-100 border border-slate-200'
+                }`}>
+                  {salesAnalytics.daily.trend === 'up' ? (
+                    <ArrowUpRight className="w-5 h-5 text-emerald-600" />
+                  ) : salesAnalytics.daily.trend === 'down' ? (
+                    <ArrowDownRight className="w-5 h-5 text-rose-600" />
+                  ) : (
+                    <TrendingUp className="w-5 h-5 text-slate-600" />
+                  )}
+                  <div className="flex-1">
+                    <p className={`text-lg font-bold ${
+                      salesAnalytics.daily.trend === 'up' 
+                        ? 'text-emerald-700' 
+                        : salesAnalytics.daily.trend === 'down'
+                        ? 'text-rose-700'
+                        : 'text-slate-700'
+                    }`}>
+                      {salesAnalytics.daily.growth_rate > 0 ? '+' : ''}
+                      {salesAnalytics.daily.growth_rate}%
+                    </p>
+                    <p className="text-xs text-slate-600">vs yesterday</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Monthly Sales */}
+            <div className="bg-gradient-to-br from-purple-50 to-violet-50 rounded-2xl shadow-lg p-6 border border-purple-100 hover:shadow-2xl transition-all duration-300">
+              <div className="flex items-center justify-between mb-4">
+                <div className="bg-purple-100 p-3 rounded-xl">
+                  <CalendarDays className="w-6 h-6 text-purple-600" />
+                </div>
+                <span className="text-sm font-semibold text-purple-600 uppercase tracking-wide">Monthly</span>
+              </div>
+              
+              <div className="space-y-4">
+                <div>
+                  <p className="text-sm text-slate-600 mb-1">This Month</p>
+                  <p className="text-3xl font-bold text-slate-900">
+                    ₱{salesAnalytics.monthly.current.total_sales.toLocaleString()}
+                  </p>
+                  <p className="text-xs text-slate-500 mt-1">
+                    {salesAnalytics.monthly.current.total_orders} orders
+                  </p>
+                </div>
+
+                <div className="border-t border-purple-200 pt-4">
+                  <p className="text-sm text-slate-600 mb-1">Last Month</p>
+                  <p className="text-xl font-semibold text-slate-700">
+                    ₱{salesAnalytics.monthly.previous.total_sales.toLocaleString()}
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    {salesAnalytics.monthly.previous.total_orders} orders
+                  </p>
+                </div>
+
+                <div className={`flex items-center gap-2 p-3 rounded-lg ${
+                  salesAnalytics.monthly.trend === 'up' 
+                    ? 'bg-emerald-100 border border-emerald-200' 
+                    : salesAnalytics.monthly.trend === 'down'
+                    ? 'bg-rose-100 border border-rose-200'
+                    : 'bg-slate-100 border border-slate-200'
+                }`}>
+                  {salesAnalytics.monthly.trend === 'up' ? (
+                    <ArrowUpRight className="w-5 h-5 text-emerald-600" />
+                  ) : salesAnalytics.monthly.trend === 'down' ? (
+                    <ArrowDownRight className="w-5 h-5 text-rose-600" />
+                  ) : (
+                    <TrendingUp className="w-5 h-5 text-slate-600" />
+                  )}
+                  <div className="flex-1">
+                    <p className={`text-lg font-bold ${
+                      salesAnalytics.monthly.trend === 'up' 
+                        ? 'text-emerald-700' 
+                        : salesAnalytics.monthly.trend === 'down'
+                        ? 'text-rose-700'
+                        : 'text-slate-700'
+                    }`}>
+                      {salesAnalytics.monthly.growth_rate > 0 ? '+' : ''}
+                      {salesAnalytics.monthly.growth_rate}%
+                    </p>
+                    <p className="text-xs text-slate-600">vs last month</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Yearly Sales */}
+            <div className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-2xl shadow-lg p-6 border border-amber-100 hover:shadow-2xl transition-all duration-300">
+              <div className="flex items-center justify-between mb-4">
+                <div className="bg-amber-100 p-3 rounded-xl">
+                  <CalendarRange className="w-6 h-6 text-amber-600" />
+                </div>
+                <span className="text-sm font-semibold text-amber-600 uppercase tracking-wide">Yearly</span>
+              </div>
+              
+              <div className="space-y-4">
+                <div>
+                  <p className="text-sm text-slate-600 mb-1">This Year</p>
+                  <p className="text-3xl font-bold text-slate-900">
+                    ₱{salesAnalytics.yearly.current.total_sales.toLocaleString()}
+                  </p>
+                  <p className="text-xs text-slate-500 mt-1">
+                    {salesAnalytics.yearly.current.total_orders} orders
+                  </p>
+                </div>
+
+                <div className="border-t border-amber-200 pt-4">
+                  <p className="text-sm text-slate-600 mb-1">Last Year</p>
+                  <p className="text-xl font-semibold text-slate-700">
+                    ₱{salesAnalytics.yearly.previous.total_sales.toLocaleString()}
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    {salesAnalytics.yearly.previous.total_orders} orders
+                  </p>
+                </div>
+
+                <div className={`flex items-center gap-2 p-3 rounded-lg ${
+                  salesAnalytics.yearly.trend === 'up' 
+                    ? 'bg-emerald-100 border border-emerald-200' 
+                    : salesAnalytics.yearly.trend === 'down'
+                    ? 'bg-rose-100 border border-rose-200'
+                    : 'bg-slate-100 border border-slate-200'
+                }`}>
+                  {salesAnalytics.yearly.trend === 'up' ? (
+                    <ArrowUpRight className="w-5 h-5 text-emerald-600" />
+                  ) : salesAnalytics.yearly.trend === 'down' ? (
+                    <ArrowDownRight className="w-5 h-5 text-rose-600" />
+                  ) : (
+                    <TrendingUp className="w-5 h-5 text-slate-600" />
+                  )}
+                  <div className="flex-1">
+                    <p className={`text-lg font-bold ${
+                      salesAnalytics.yearly.trend === 'up' 
+                        ? 'text-emerald-700' 
+                        : salesAnalytics.yearly.trend === 'down'
+                        ? 'text-rose-700'
+                        : 'text-slate-700'
+                    }`}>
+                      {salesAnalytics.yearly.growth_rate > 0 ? '+' : ''}
+                      {salesAnalytics.yearly.growth_rate}%
+                    </p>
+                    <p className="text-xs text-slate-600">vs last year</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Sales Chart - Full Width */}
       <div className="mb-8 bg-white rounded-2xl shadow-lg p-6 border border-slate-100 hover:shadow-2xl transition-all duration-300">
@@ -535,6 +792,65 @@ const Dashboard = () => {
           </div>
         </div>
       </div>
+
+      {/* Low Stock Notifications - Bottom Right */}
+      {showNotification && dashboardData?.low_stock_items && dashboardData.low_stock_items.length > 0 && (
+        <div className="fixed bottom-6 right-6 z-50 max-w-md animate-slide-in">
+          {(() => {
+            const item = dashboardData.low_stock_items[currentNotificationIndex];
+            return (
+              <div className="bg-gradient-to-r from-amber-50 to-orange-50 border-l-4 border-amber-500 rounded-lg shadow-xl p-4 transform transition-all duration-300 hover:shadow-2xl">
+                <div className="flex items-start gap-3">
+                  <div className="flex-shrink-0">
+                    <div className="w-10 h-10 bg-amber-500 rounded-full flex items-center justify-center animate-pulse">
+                      <AlertTriangle className="w-6 h-6 text-white" />
+                    </div>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <h4 className="text-sm font-bold text-amber-900 truncate">
+                        Low Stock Alert
+                      </h4>
+                      <button
+                        onClick={() => setShowNotification(false)}
+                        className="flex-shrink-0 text-amber-600 hover:text-amber-800 transition-colors"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <p className="text-sm text-amber-800 font-medium mb-2 truncate">
+                      {item.product_name}
+                    </p>
+                    <div className="flex items-center gap-4 text-xs">
+                      <div className="flex items-center gap-1">
+                        <Package className="w-3.5 h-3.5 text-amber-600" />
+                        <span className="text-amber-700">
+                          <span className="font-semibold">{item.quantity}</span> units left
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
+                        <span className="text-amber-700">
+                          Min: <span className="font-semibold">{item.reorder_level}</span>
+                        </span>
+                      </div>
+                    </div>
+                    <p className="text-xs text-amber-600 mt-2 flex items-center gap-1">
+                      <Clock className="w-3 h-3" />
+                      {new Date().toLocaleTimeString()}
+                    </p>
+                    {dashboardData.low_stock_items.length > 1 && (
+                      <p className="text-xs text-amber-700 mt-2 font-medium">
+                        {currentNotificationIndex + 1} of {dashboardData.low_stock_items.length} items
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      )}
     </div>
   );
 };

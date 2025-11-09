@@ -15,6 +15,8 @@ import {
 import toast from 'react-hot-toast';
 import ViewModal from '../components/ViewModal';
 import DeleteModal from '../components/DeleteModal';
+import Modal from '../components/Modal';
+import AddOrderModal from '../components/AddOrderModal';
 import Pagination from '../components/Pagination';
 import { ordersAPI, productsAPI } from '../services/api';
 
@@ -31,6 +33,7 @@ const Orders = () => {
   const [editModal, setEditModal] = useState({ isOpen: false, data: null });
   const [completeModal, setCompleteModal] = useState({ isOpen: false, order: null });
   const [deleteModal, setDeleteModal] = useState({ isOpen: false, id: null, name: '' });
+  const [voidModal, setVoidModal] = useState({ isOpen: false, order: null, reason: '' });
 
   // Data from API
   const [orders, setOrders] = useState([]);
@@ -39,7 +42,6 @@ const Orders = () => {
   // Order form state
   const [orderForm, setOrderForm] = useState({
     customer_name: '',
-    service_type: 'Printing',
     notes: '',
     preferred_pickup_date: new Date().toISOString().split('T')[0],
     order_items: []
@@ -179,7 +181,6 @@ const Orders = () => {
       setAddModal(false);
       setOrderForm({
         customer_name: '',
-        service_type: 'Printing',
         notes: '',
         preferred_pickup_date: new Date().toISOString().split('T')[0],
         order_items: []
@@ -244,6 +245,23 @@ const Orders = () => {
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to complete order');
       console.error('Error completing order:', error);
+    }
+  };
+
+  const handleVoidOrder = async () => {
+    if (!voidModal.reason || voidModal.reason.trim() === '') {
+      toast.error('Please enter a reason for voiding the order');
+      return;
+    }
+
+    try {
+      await ordersAPI.voidOrder(voidModal.order.order_id, { void_reason: voidModal.reason });
+      await fetchOrders();
+      setVoidModal({ isOpen: false, order: null, reason: '' });
+      toast.success('Order voided successfully and inventory restored!');
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to void order');
+      console.error('Error voiding order:', error);
     }
   };
 
@@ -343,7 +361,7 @@ const Orders = () => {
   const viewFields = [
     { key: 'order_number', label: 'Order Number' },
     { key: 'customer_name', label: 'Customer Name', render: (v) => v || 'Walk-in Customer' },
-    { key: 'service_type', label: 'Service Type' },
+    { key: 'service_type', label: 'Category' },
     { key: 'order_items', label: 'Products', render: (items) => items?.map(item => 
       `${item.product?.product_name} (x${item.quantity})`
     ).join(', ') || 'N/A' },
@@ -545,7 +563,7 @@ const Orders = () => {
                         <Eye className="w-4 h-4" />
                         View
                       </button>
-                      {order.status !== 'Completed' && order.status !== 'Cancelled' && (
+                      {order.status !== 'Completed' && order.status !== 'Cancelled' && !order.is_voided && (
                         <>
                           <button 
                             onClick={() => setEditModal({ isOpen: true, data: order })}
@@ -555,12 +573,22 @@ const Orders = () => {
                             Edit
                           </button>
                           {(order.status === 'Pending' || order.status === 'In Progress') && (
-                            <button 
-                              onClick={() => handleOpenCompleteModal(order)}
-                              className="px-3 py-2 bg-teal-50 hover:bg-teal-100 text-teal-600 rounded-lg transition-colors"
-                            >
-                              <CheckCircle className="w-4 h-4" />
-                            </button>
+                            <>
+                              <button 
+                                onClick={() => handleOpenCompleteModal(order)}
+                                className="px-3 py-2 bg-teal-50 hover:bg-teal-100 text-teal-600 rounded-lg transition-colors"
+                                title="Complete Order"
+                              >
+                                <CheckCircle className="w-4 h-4" />
+                              </button>
+                              <button 
+                                onClick={() => setVoidModal({ isOpen: true, order: order, reason: '' })}
+                                className="px-3 py-2 bg-orange-50 hover:bg-orange-100 text-orange-600 rounded-lg transition-colors"
+                                title="Void Order"
+                              >
+                                <XCircle className="w-4 h-4" />
+                              </button>
+                            </>
                           )}
                           <button 
                             onClick={() => setDeleteModal({ isOpen: true, id: order.order_id, name: order.order_number })}
@@ -643,7 +671,7 @@ const Orders = () => {
                         >
                           <Eye className="w-4 h-4" />
                         </button>
-                        {order.status !== 'Completed' && order.status !== 'Cancelled' && (
+                        {order.status !== 'Completed' && order.status !== 'Cancelled' && !order.is_voided && (
                           <>
                             <button 
                               onClick={() => setEditModal({ isOpen: true, data: order })}
@@ -653,13 +681,22 @@ const Orders = () => {
                               <Pencil className="w-4 h-4" />
                             </button>
                             {(order.status === 'Pending' || order.status === 'In Progress') && (
-                              <button 
-                                onClick={() => handleOpenCompleteModal(order)}
-                                className="p-2 bg-teal-100 text-teal-700 rounded-lg hover:bg-teal-200 transition-colors"
-                                title="Complete & Pay"
-                              >
-                                <CheckCircle className="w-4 h-4" />
-                              </button>
+                              <>
+                                <button 
+                                  onClick={() => handleOpenCompleteModal(order)}
+                                  className="p-2 bg-teal-100 text-teal-700 rounded-lg hover:bg-teal-200 transition-colors"
+                                  title="Complete & Pay"
+                                >
+                                  <CheckCircle className="w-4 h-4" />
+                                </button>
+                                <button 
+                                  onClick={() => setVoidModal({ isOpen: true, order: order, reason: '' })}
+                                  className="p-2 bg-orange-100 text-orange-700 rounded-lg hover:bg-orange-200 transition-colors"
+                                  title="Void Order"
+                                >
+                                  <XCircle className="w-4 h-4" />
+                                </button>
+                              </>
                             )}
                             <button 
                               onClick={() => setDeleteModal({ isOpen: true, id: order.order_id, name: order.order_number })}
@@ -695,199 +732,18 @@ const Orders = () => {
       )}
     </div>
 
-      {/* Add Order Modal - Custom Form */}
-      {addModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-start justify-center p-4 z-50 overflow-y-auto">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full my-8 flex flex-col">
-            <div className="bg-gradient-to-r from-amber-600 to-orange-600 text-white px-6 py-4 rounded-t-2xl flex-shrink-0">
-              <h2 className="text-2xl font-bold">Create New Order</h2>
-            </div>
-            
-            <div className="p-6 space-y-6 flex-1">
-              {/* Customer Info */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">
-                    Customer Name (Optional)
-                  </label>
-                  <input
-                    type="text"
-                    value={orderForm.customer_name}
-                    onChange={(e) => setOrderForm({ ...orderForm, customer_name: e.target.value })}
-                    className="w-full px-4 py-2 border-2 border-slate-200 rounded-xl focus:border-amber-500 focus:outline-none text-slate-900 bg-white placeholder:text-slate-400"
-                    placeholder="Walk-in customer if empty"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">
-                    Preferred Pickup Date
-                  </label>
-                  <input
-                    type="date"
-                    value={orderForm.preferred_pickup_date}
-                    onChange={(e) => setOrderForm({ ...orderForm, preferred_pickup_date: e.target.value })}
-                    className="w-full px-4 py-2 border-2 border-slate-200 rounded-xl focus:border-amber-500 focus:outline-none text-slate-900 bg-white"
-                    style={{ colorScheme: 'light' }}
-                  />
-                </div>
-              </div>
-
-              {/* Service Type */}
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">
-                  Service Type <span className="text-red-500">*</span>
-                </label>
-                <select
-                  value={orderForm.service_type}
-                  onChange={(e) => setOrderForm({ ...orderForm, service_type: e.target.value })}
-                  className="w-full px-4 py-2 border-2 border-slate-200 rounded-xl focus:border-amber-500 focus:outline-none text-slate-900 bg-white"
-                  style={{ color: '#0f172a' }}
-                >
-                  {serviceTypes.map(type => (
-                    <option key={type} value={type}>{type}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Add Products Section */}
-              <div className="border-2 border-amber-200 rounded-xl p-4 bg-amber-50">
-                <h3 className="text-lg font-bold text-slate-900 mb-4">Add Products to Order</h3>
-                
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
-                  <div className="md:col-span-2">
-                    <label className="block text-sm font-semibold text-slate-700 mb-2">
-                      Product <span className="text-red-500">*</span>
-                    </label>
-                    <select
-                      value={currentItem.product_id}
-                      onChange={(e) => handleProductSelect(e.target.value)}
-                      className="w-full px-4 py-2 border-2 border-slate-200 rounded-xl focus:border-amber-500 focus:outline-none text-slate-900 bg-white"
-                      style={{ color: '#0f172a' }}
-                    >
-                      <option value="">Select Product</option>
-                      {products.map(product => (
-                        <option key={product.product_id} value={product.product_id}>
-                          {product.product_name} - ₱{product.price}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-slate-700 mb-2">
-                      Quantity <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="number"
-                      min="1"
-                      value={currentItem.quantity}
-                      onChange={(e) => setCurrentItem({ ...currentItem, quantity: parseInt(e.target.value) || 1 })}
-                      className="w-full px-4 py-2 border-2 border-slate-200 rounded-xl focus:border-amber-500 focus:outline-none text-slate-900 bg-white"
-                      style={{ color: '#0f172a' }}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-slate-700 mb-2">
-                      Unit Price
-                    </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={currentItem.unit_price}
-                      onChange={(e) => setCurrentItem({ ...currentItem, unit_price: parseFloat(e.target.value) || 0 })}
-                      className="w-full px-4 py-2 border-2 border-slate-200 rounded-xl focus:border-amber-500 focus:outline-none text-slate-900 bg-white"
-                      style={{ color: '#0f172a' }}
-                    />
-                  </div>
-                </div>
-
-                <button
-                  onClick={addItemToOrder}
-                  className="px-4 py-2 bg-amber-600 text-white rounded-lg font-semibold hover:bg-amber-700 transition-all flex items-center gap-2"
-                >
-                  <Plus className="w-4 h-4" />
-                  Add Product
-                </button>
-              </div>
-
-              {/* Order Items List */}
-              {orderForm.order_items.length > 0 && (
-                <div className="border-2 border-slate-200 rounded-xl p-4">
-                  <h3 className="text-lg font-bold text-slate-900 mb-3">Order Items</h3>
-                  <div className="space-y-2">
-                    {orderForm.order_items.map((item, index) => (
-                      <div key={index} className="flex items-center justify-between bg-slate-50 p-3 rounded-lg">
-                        <div className="flex-1">
-                          <p className="font-semibold text-slate-900">{item.product_name}</p>
-                          <p className="text-sm text-slate-600">
-                            {item.quantity} × ₱{item.unit_price.toLocaleString()} = ₱{(item.quantity * item.unit_price).toLocaleString()}
-                          </p>
-                        </div>
-                        <button
-                          onClick={() => removeItemFromOrder(index)}
-                          className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="mt-4 pt-4 border-t-2 border-slate-200">
-                    <div className="flex justify-between items-center">
-                      <span className="text-lg font-bold text-slate-900">Total Amount:</span>
-                      <span className="text-2xl font-bold text-amber-600">
-                        ₱{calculateTotal().toLocaleString()}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Notes */}
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">
-                  Notes
-                </label>
-                <textarea
-                  value={orderForm.notes}
-                  onChange={(e) => setOrderForm({ ...orderForm, notes: e.target.value })}
-                  rows="3"
-                  className="w-full px-4 py-2 border-2 border-slate-200 rounded-xl focus:border-amber-500 focus:outline-none text-slate-900 bg-white placeholder:text-slate-400"
-                  placeholder="Add any special instructions..."
-                  style={{ color: '#0f172a' }}
-                />
-              </div>
-            </div>
-
-            <div className="bg-slate-50 px-6 py-4 rounded-b-2xl flex justify-end gap-3 border-t border-slate-200 flex-shrink-0">
-              <button
-                onClick={() => {
-                  setAddModal(false);
-                  setOrderForm({
-                    customer_name: '',
-                    service_type: 'Printing',
-                    notes: '',
-                    preferred_pickup_date: new Date().toISOString().split('T')[0],
-                    order_items: []
-                  });
-                }}
-                className="px-6 py-2.5 border-2 border-slate-300 text-slate-700 rounded-xl font-semibold hover:bg-slate-100 transition-all"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSubmitOrder}
-                disabled={orderForm.order_items.length === 0}
-                className="px-6 py-2.5 bg-gradient-to-r from-amber-600 to-orange-600 text-white rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Create Order
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <AddOrderModal
+        isOpen={addModal}
+        onClose={() => setAddModal(false)}
+        orderForm={orderForm}
+        setOrderForm={setOrderForm}
+        currentItem={currentItem}
+        setCurrentItem={setCurrentItem}
+        products={products}
+        addItemToOrder={addItemToOrder}
+        removeItemFromOrder={removeItemFromOrder}
+        handleSubmitOrder={handleSubmitOrder}
+      />
 
       {/* View Modal */}
       <ViewModal
@@ -938,24 +794,6 @@ const Orders = () => {
                     className="w-full px-4 py-2 border-2 border-slate-200 rounded-xl focus:border-amber-500 focus:outline-none text-slate-900 bg-white"
                   />
                 </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">
-                  Service Type
-                </label>
-                <select
-                  value={editModal.data?.service_type || ''}
-                  onChange={(e) => setEditModal({ 
-                    ...editModal, 
-                    data: { ...editModal.data, service_type: e.target.value } 
-                  })}
-                  className="w-full px-4 py-2 border-2 border-slate-200 rounded-xl focus:border-amber-500 focus:outline-none text-slate-900 bg-white"
-                >
-                  {serviceTypes.map(type => (
-                    <option key={type} value={type}>{type}</option>
-                  ))}
-                </select>
               </div>
 
               <div>
@@ -1208,6 +1046,73 @@ const Orders = () => {
                 className="px-6 py-2.5 bg-gradient-to-r from-teal-600 to-cyan-600 text-white rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all"
               >
                 Complete Order & Record Payment
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Void Order Modal */}
+      {voidModal.isOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full">
+            <div className="bg-gradient-to-r from-orange-600 to-amber-600 text-white p-6 rounded-t-2xl">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-white/20 rounded-lg">
+                  <XCircle className="w-6 h-6" />
+                </div>
+                <div>
+                  <h2 className="text-2xl font-bold">Void Order</h2>
+                  <p className="text-orange-100 text-sm">Order: {voidModal.order?.order_number}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6">
+              <p className="text-slate-600 mb-4">
+                Voiding this order will cancel it and restore all items back to inventory. Please provide a reason:
+              </p>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">
+                    Reason for Voiding <span className="text-rose-500">*</span>
+                  </label>
+                  <textarea
+                    value={voidModal.reason}
+                    onChange={(e) => setVoidModal({ ...voidModal, reason: e.target.value })}
+                    placeholder="E.g., Customer cancelled, Wrong order, Duplicate entry..."
+                    className="w-full px-4 py-3 border-2 border-slate-300 rounded-xl focus:outline-none focus:border-orange-500 transition-colors"
+                    rows="3"
+                    maxLength="500"
+                  />
+                  <p className="text-xs text-slate-500 mt-1">{voidModal.reason.length}/500 characters</p>
+                </div>
+
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                  <h4 className="font-semibold text-amber-900 mb-2 text-sm">Order Details:</h4>
+                  <div className="text-sm text-amber-800 space-y-1">
+                    <p><strong>Customer:</strong> {voidModal.order?.customer_name || 'Walk-in'}</p>
+                    <p><strong>Items:</strong> {voidModal.order?.order_items?.length || 0} item(s)</p>
+                    <p><strong>Total:</strong> ₱{voidModal.order?.total_amount?.toFixed(2)}</p>
+                    <p><strong>Status:</strong> {voidModal.order?.status}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-slate-50 px-6 py-4 rounded-b-2xl flex justify-end gap-3 border-t border-slate-200">
+              <button
+                onClick={() => setVoidModal({ isOpen: false, order: null, reason: '' })}
+                className="px-6 py-2.5 border-2 border-slate-300 text-slate-700 rounded-xl font-semibold hover:bg-slate-100 transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleVoidOrder}
+                className="px-6 py-2.5 bg-gradient-to-r from-orange-600 to-amber-600 text-white rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all"
+              >
+                Void Order
               </button>
             </div>
           </div>

@@ -97,6 +97,7 @@ import {
   Edit,
   Trash2
 } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { rentalsAPI } from '../services/api';
 import Pagination from '../components/Pagination';
 import Modal from '../components/Modal';
@@ -163,12 +164,33 @@ const Rentals = () => {
   // Delete Maintenance Modal State
   const [showDeleteMaintenanceModal, setShowDeleteMaintenanceModal] = useState(false);
 
+  // Form filtering states
+  const [selectedContractProperty, setSelectedContractProperty] = useState('');
+  const [selectedContractTenant, setSelectedContractTenant] = useState('');
+  const [selectedPaymentTenant, setSelectedPaymentTenant] = useState('');
+  const [selectedPaymentProperty, setSelectedPaymentProperty] = useState('');
+
   // Handle view details
   const handleViewDetails = (item, type) => {
     setSelectedItem(item);
     setDetailsType(type);
     setShowDetailsModal(true);
   };
+
+  // Reset form states when modals close
+  useEffect(() => {
+    if (!showContractModal) {
+      setSelectedContractProperty('');
+      setSelectedContractTenant('');
+    }
+  }, [showContractModal]);
+
+  useEffect(() => {
+    if (!showPaymentModal) {
+      setSelectedPaymentTenant('');
+      setSelectedPaymentProperty('');
+    }
+  }, [showPaymentModal]);
 
   // Initial load - fetch all data once
   useEffect(() => {
@@ -177,317 +199,108 @@ const Rentals = () => {
 
   // Fetch all data (charts + table) - only on initial load
   const fetchAllData = async () => {
+    console.log('Starting fetchAllData...');
     setLoading(true);
-    // Simulated API call - replace with actual rentalsAPI calls
-    setTimeout(() => {
-      // Initialize all mock data
+    try {
+      // Fetch all data from API
+      console.log('Making API calls...');
+      const [propertiesRes, tenantsRes, contractsRes, paymentsRes, maintenanceRes] = await Promise.all([
+        rentalsAPI.getProperties(),
+        rentalsAPI.getTenants(),
+        rentalsAPI.getContracts(),
+        rentalsAPI.getPayments(),
+        rentalsAPI.getMaintenanceRequests()
+      ]);
+
+      console.log('API calls completed:', {
+        properties: propertiesRes.data?.length || 0,
+        tenants: tenantsRes.data?.length || 0,
+        contracts: contractsRes.data?.length || 0,
+        payments: paymentsRes.data?.length || 0,
+        maintenance: maintenanceRes.data?.length || 0
+      });
+
+      setProperties(propertiesRes.data || []);
+      setTenants(tenantsRes.data || []);
+      setContracts(contractsRes.data || []);
+      setPayments(paymentsRes.data || []);
+      setMaintenanceRequests(maintenanceRes.data || []);
+      
+      console.log('Data set successfully');
+    } catch (error) {
+      console.error('Error fetching rental data:', error);
+      toast.error('Failed to load rental data from API. Using demo data.');
+      
+      // Fallback to demo data
       setProperties([
-        {
-          id: 1,
-          name: 'School Canteen',
-          type: 'Commercial',
-          location: 'Ground Floor, Main Building',
-          size: '150 sqm',
-          monthlyRate: 15000,
-          status: 'Occupied',
-          tenant: 'Maria Santos',
-          contractEnd: '2026-06-30'
-        },
-        {
-          id: 2,
-          name: 'Boarding House A',
-          type: 'Residential',
-          location: 'Behind Admin Building',
-          size: '200 sqm (10 rooms)',
-          monthlyRate: 25000,
-          status: 'Occupied',
-          tenant: 'Pedro Garcia',
-          contractEnd: '2026-12-31'
-        },
-        {
-          id: 3,
-          name: 'Photocopy Center',
-          type: 'Commercial',
-          location: 'Library Building, 1st Floor',
-          size: '50 sqm',
-          monthlyRate: 8000,
-          status: 'Vacant',
-          tenant: null,
-          contractEnd: null
-        },
-        {
-          id: 4,
-          name: 'School Bookstore',
-          type: 'Commercial',
-          location: 'Ground Floor, East Wing',
-          size: '80 sqm',
-          monthlyRate: 12000,
-          status: 'Occupied',
-          tenant: 'Ana Reyes',
-          contractEnd: '2026-08-15'
-        },
-        {
-          id: 5,
-          name: 'Parking Space - North',
-          type: 'Commercial',
-          location: 'North Parking Area',
-          size: '100 sqm (20 slots)',
-          monthlyRate: 10000,
-          status: 'Vacant',
-          tenant: null,
-          contractEnd: null
-        }
+        { id: 1, name: 'School Canteen', type: 'Commercial', location: 'Ground Floor', size: '150 sqm', monthlyRate: 15000, status: 'Occupied', tenant: 'Maria Santos', contractEnd: '2025-12-31' },
+        { id: 2, name: 'Photocopy Center', type: 'Commercial', location: '2nd Floor', size: '50 sqm', monthlyRate: 8000, status: 'Occupied', tenant: 'Juan dela Cruz', contractEnd: '2025-10-15' },
+        { id: 3, name: 'Bookstore', type: 'Commercial', location: '3rd Floor', size: '80 sqm', monthlyRate: 12000, status: 'Vacant', tenant: null, contractEnd: null },
+        { id: 4, name: 'Parking Space A', type: 'Commercial', location: 'Basement', size: '20 sqm', monthlyRate: 3000, status: 'Occupied', tenant: 'Pedro Garcia', contractEnd: '2025-11-30' },
+        { id: 5, name: 'Boarding House', type: 'Residential', location: 'Annex Building', size: '200 sqm', monthlyRate: 25000, status: 'Under Maintenance', tenant: null, contractEnd: null }
       ]);
-
+      
       setTenants([
-        {
-          id: 1,
-          name: 'Maria Santos',
-          businessName: 'Santos Canteen Services',
-          contactNumber: '09171234567',
-          email: 'maria.santos@gmail.com',
-          propertyRented: 'School Canteen',
-          contractStatus: 'Active',
-          depositPaid: 30000,
-          lastPayment: '2025-11-01'
-        },
-        {
-          id: 2,
-          name: 'Pedro Garcia',
-          businessName: 'Garcia Boarding House',
-          contactNumber: '09187654321',
-          email: 'pedro.garcia@yahoo.com',
-          propertyRented: 'Boarding House A',
-          contractStatus: 'Active',
-          depositPaid: 50000,
-          lastPayment: '2025-11-01'
-        },
-        {
-          id: 3,
-          name: 'Ana Reyes',
-          businessName: 'Reyes School Supplies',
-          contactNumber: '09161112222',
-          email: 'ana.reyes@gmail.com',
-          propertyRented: 'School Bookstore',
-          contractStatus: 'Active',
-          depositPaid: 24000,
-          lastPayment: '2025-11-01'
-        },
-        {
-          id: 4,
-          name: 'Carlos Mendoza',
-          businessName: 'Mendoza Printing Services',
-          contactNumber: '09173334444',
-          email: 'carlos.m@hotmail.com',
-          propertyRented: null,
-          contractStatus: 'Inactive',
-          depositPaid: 0,
-          lastPayment: '2024-12-01'
-        }
+        { id: 1, name: 'Maria Santos', businessName: 'Santos Canteen Services', contactNumber: '09123456789', email: 'maria@santos.com', propertyRented: 'School Canteen', contractStatus: 'Active', depositPaid: 15000, lastPayment: '2025-11-01' },
+        { id: 2, name: 'Juan dela Cruz', businessName: 'Juan Photocopy', contactNumber: '09198765432', email: 'juan@photocopy.com', propertyRented: 'Photocopy Center', contractStatus: 'Active', depositPaid: 8000, lastPayment: '2025-11-01' },
+        { id: 3, name: 'Pedro Garcia', businessName: 'Garcia Parking', contactNumber: '09234567890', email: 'pedro@garcia.com', propertyRented: 'Parking Space A', contractStatus: 'Active', depositPaid: 3000, lastPayment: '2025-10-15' }
       ]);
-
+      
       setContracts([
-        {
-          id: 1,
-          contractNumber: 'RNT-2025-001',
-          property: 'School Canteen',
-          tenant: 'Maria Santos',
-          startDate: '2025-07-01',
-          endDate: '2026-06-30',
-          monthlyRent: 15000,
-          deposit: 30000,
-          status: 'Active',
-          daysRemaining: 238
-        },
-        {
-          id: 2,
-          contractNumber: 'RNT-2025-002',
-          property: 'Boarding House A',
-          tenant: 'Pedro Garcia',
-          startDate: '2025-01-01',
-          endDate: '2026-12-31',
-          monthlyRent: 25000,
-          deposit: 50000,
-          status: 'Active',
-          daysRemaining: 422
-        },
-        {
-          id: 3,
-          contractNumber: 'RNT-2025-003',
-          property: 'School Bookstore',
-          tenant: 'Ana Reyes',
-          startDate: '2025-09-01',
-          endDate: '2026-08-15',
-          monthlyRent: 12000,
-          deposit: 24000,
-          status: 'Active',
-          daysRemaining: 283
-        },
-        {
-          id: 4,
-          contractNumber: 'RNT-2024-015',
-          property: 'Photocopy Center',
-          tenant: 'Carlos Mendoza',
-          startDate: '2024-01-01',
-          endDate: '2024-12-31',
-          monthlyRent: 8000,
-          deposit: 16000,
-          status: 'Expired',
-          daysRemaining: -309
-        }
+        { id: 1, property: 'School Canteen', tenant: 'Maria Santos', startDate: '2025-01-01', endDate: '2025-12-31', monthlyRent: 15000, deposit: 15000, status: 'Active' },
+        { id: 2, property: 'Photocopy Center', tenant: 'Juan dela Cruz', startDate: '2025-01-01', endDate: '2025-12-31', monthlyRent: 8000, deposit: 8000, status: 'Active' },
+        { id: 3, property: 'Parking Space A', tenant: 'Pedro Garcia', startDate: '2025-01-01', endDate: '2025-12-31', monthlyRent: 3000, deposit: 3000, status: 'Active' }
       ]);
-
+      
       setPayments([
-        {
-          id: 1,
-          paymentNumber: 'PAY-2025-011',
-          tenant: 'Maria Santos',
-          property: 'School Canteen',
-          amount: 15000,
-          paymentDate: '2025-11-01',
-          month: 'November 2025',
-          method: 'Bank Transfer',
-          status: 'Paid'
-        },
-        {
-          id: 2,
-          paymentNumber: 'PAY-2025-012',
-          tenant: 'Pedro Garcia',
-          property: 'Boarding House A',
-          amount: 25000,
-          paymentDate: '2025-11-01',
-          month: 'November 2025',
-          method: 'Cash',
-          status: 'Paid'
-        },
-        {
-          id: 3,
-          paymentNumber: 'PAY-2025-013',
-          tenant: 'Ana Reyes',
-          property: 'School Bookstore',
-          amount: 12000,
-          paymentDate: '2025-11-01',
-          month: 'November 2025',
-          method: 'GCash',
-          status: 'Paid'
-        },
-        {
-          id: 4,
-          paymentNumber: 'PAY-2025-014',
-          tenant: 'Maria Santos',
-          property: 'School Canteen',
-          amount: 15000,
-          paymentDate: null,
-          month: 'December 2025',
-          method: null,
-          status: 'Pending'
-        },
-        {
-          id: 5,
-          paymentNumber: 'PAY-2025-015',
-          tenant: 'Pedro Garcia',
-          property: 'Boarding House A',
-          amount: 25000,
-          paymentDate: null,
-          month: 'December 2025',
-          method: null,
-          status: 'Pending'
-        },
-        {
-          id: 6,
-          paymentNumber: 'PAY-2025-010',
-          tenant: 'Maria Santos',
-          property: 'School Canteen',
-          amount: 15000,
-          paymentDate: '2025-10-02',
-          month: 'October 2025',
-          method: 'Bank Transfer',
-          status: 'Paid'
-        },
-        {
-          id: 7,
-          paymentNumber: 'PAY-2025-008',
-          tenant: 'Pedro Garcia',
-          property: 'Boarding House A',
-          amount: 25000,
-          paymentDate: '2025-09-30',
-          month: 'September 2025',
-          method: 'Cash',
-          status: 'Overdue'
-        }
+        { id: 1, tenant: 'Maria Santos', property: 'School Canteen', amount: 15000, dueDate: '2025-11-01', paymentDate: '2025-11-01', status: 'Paid', method: 'Bank Transfer' },
+        { id: 2, tenant: 'Juan dela Cruz', property: 'Photocopy Center', amount: 8000, dueDate: '2025-11-01', paymentDate: '2025-11-01', status: 'Paid', method: 'GCash' },
+        { id: 3, tenant: 'Pedro Garcia', property: 'Parking Space A', amount: 3000, dueDate: '2025-11-01', paymentDate: null, status: 'Pending', method: null }
       ]);
-
+      
       setMaintenanceRequests([
-        {
-          id: 1,
-          requestNumber: 'MNT-2025-015',
-          property: 'School Canteen',
-          tenant: 'Maria Santos',
-          issue: 'Leaking faucet in kitchen area',
-          priority: 'Medium',
-          status: 'In Progress',
-          dateReported: '2025-11-03',
-          assignedTo: 'Juan Dela Cruz'
-        },
-        {
-          id: 2,
-          requestNumber: 'MNT-2025-016',
-          property: 'Boarding House A',
-          tenant: 'Pedro Garcia',
-          issue: 'Broken door lock in Room 5',
-          priority: 'High',
-          status: 'Pending',
-          dateReported: '2025-11-04',
-          assignedTo: null
-        },
-        {
-          id: 3,
-          requestNumber: 'MNT-2025-017',
-          property: 'School Bookstore',
-          tenant: 'Ana Reyes',
-          issue: 'Air conditioning not cooling properly',
-          priority: 'High',
-          status: 'Pending',
-          dateReported: '2025-11-05',
-          assignedTo: null
-        },
-        {
-          id: 4,
-          requestNumber: 'MNT-2025-014',
-          property: 'Boarding House A',
-          tenant: 'Pedro Garcia',
-          issue: 'Water heater in Room 3 not working',
-          priority: 'Medium',
-          status: 'Completed',
-          dateReported: '2025-10-28',
-          assignedTo: 'Juan Dela Cruz'
-        },
-        {
-          id: 5,
-          requestNumber: 'MNT-2025-013',
-          property: 'School Canteen',
-          tenant: 'Maria Santos',
-          issue: 'Exhaust fan making loud noise',
-          priority: 'Low',
-          status: 'Completed',
-          dateReported: '2025-10-25',
-          assignedTo: 'Roberto Santos'
-        }
+        { id: 1, requestNumber: 'MNT-2025-001', property: 'Boarding House', tenant: 'N/A', description: 'Leaking roof in room 5', priority: 'High', status: 'Pending', requestDate: '2025-11-01', assignedTo: null },
+        { id: 2, requestNumber: 'MNT-2025-002', property: 'School Canteen', tenant: 'Maria Santos', description: 'Air conditioning not working', priority: 'Medium', status: 'In Progress', requestDate: '2025-10-28', assignedTo: 'Maintenance Team' }
       ]);
-
+    } finally {
+      console.log('Setting loading to false');
       setLoading(false);
-    }, 500);
+    }
   };
 
   // Fetch only table data - for tab changes (no loading screen, just table update)
   const fetchTableData = async () => {
     setTableLoading(true);
-    // Simulated API call - would normally fetch based on activeTab
-    setTimeout(() => {
-      // Data is already in state, just trigger re-render
-      // In real implementation, this would call specific API endpoint
+    try {
+      // Fetch data based on active tab
+      switch (activeTab) {
+        case 'properties':
+          const propertiesRes = await rentalsAPI.getProperties();
+          setProperties(propertiesRes.data);
+          break;
+        case 'tenants':
+          const tenantsRes = await rentalsAPI.getTenants();
+          setTenants(tenantsRes.data);
+          break;
+        case 'contracts':
+          const contractsRes = await rentalsAPI.getContracts();
+          setContracts(contractsRes.data);
+          break;
+        case 'payments':
+          const paymentsRes = await rentalsAPI.getPayments();
+          setPayments(paymentsRes.data);
+          break;
+        case 'maintenance':
+          const maintenanceRes = await rentalsAPI.getMaintenanceRequests();
+          setMaintenanceRequests(maintenanceRes.data);
+          break;
+      }
+    } catch (error) {
+      console.error('Error fetching table data:', error);
+      toast.error('Failed to load data');
+    } finally {
       setTableLoading(false);
-    }, 300);
+    }
   };
 
   // Get status color
@@ -533,7 +346,7 @@ const Rentals = () => {
     activeContracts: contracts.filter(c => c.status === 'Active').length,
     monthlyRevenue: properties
       .filter(p => p.status === 'Occupied')
-      .reduce((sum, p) => sum + p.monthlyRate, 0),
+      .reduce((sum, p) => sum + (parseFloat(p.monthlyRate) || 0), 0),
     pendingPayments: payments.filter(p => p.status === 'Pending').length,
     pendingMaintenance: maintenanceRequests.filter(m => m.status === 'Pending').length
   };
@@ -585,6 +398,227 @@ const Rentals = () => {
   };
 
   const totalPages = Math.ceil(getFilteredData().length / itemsPerPage);
+
+  // ==================== CRUD HANDLERS ====================
+
+  // Property CRUD Handlers
+  const handleCreateProperty = async (formData) => {
+    try {
+      await rentalsAPI.createProperty(formData);
+      toast.success('Property created successfully!');
+      setShowPropertyModal(false);
+      fetchTableData(); // Only reload the table
+    } catch (error) {
+      console.error('Error creating property:', error);
+      const errorMessage = error.response?.data?.message || 'Failed to create property';
+      toast.error(errorMessage);
+    }
+  };
+
+  const handleEditProperty = async (formData) => {
+    try {
+      await rentalsAPI.updateProperty(editingItem.id, formData);
+      toast.success('Property updated successfully!');
+      setShowEditPropertyModal(false);
+      setEditingItem(null);
+      fetchTableData(); // Only reload the table
+    } catch (error) {
+      console.error('Error updating property:', error);
+      const errorMessage = error.response?.data?.message || 'Failed to update property';
+      toast.error(errorMessage);
+    }
+  };
+
+  const handleDeleteProperty = async () => {
+    try {
+      await rentalsAPI.deleteProperty(editingItem.id);
+      toast.success('Property deleted successfully!');
+      setShowDeletePropertyModal(false);
+      setEditingItem(null);
+      fetchTableData(); // Only reload the table
+    } catch (error) {
+      console.error('Error deleting property:', error);
+      const errorMessage = error.response?.data?.message || 'Failed to delete property';
+      toast.error(errorMessage);
+    }
+  };
+
+  // Tenant CRUD Handlers
+  const handleCreateTenant = async (formData) => {
+    try {
+      console.log('Creating tenant with data:', formData);
+      await rentalsAPI.createTenant(formData);
+      toast.success('Tenant created successfully!');
+      setShowTenantModal(false);
+      fetchTableData(); // Only reload the table
+    } catch (error) {
+      console.error('Error creating tenant:', error);
+      console.error('Error response:', error.response?.data);
+      const errorMessage = error.response?.data?.message || 'Failed to create tenant';
+      const errors = error.response?.data?.errors;
+      if (errors) {
+        Object.values(errors).forEach(err => toast.error(err[0]));
+      } else {
+        toast.error(errorMessage);
+      }
+    }
+  };
+
+  const handleEditTenant = async (formData) => {
+    try {
+      await rentalsAPI.updateTenant(editingItem.id, formData);
+      toast.success('Tenant updated successfully!');
+      setShowEditTenantModal(false);
+      setEditingItem(null);
+      fetchTableData(); // Only reload the table
+    } catch (error) {
+      console.error('Error updating tenant:', error);
+      const errorMessage = error.response?.data?.message || 'Failed to update tenant';
+      toast.error(errorMessage);
+    }
+  };
+
+  const handleDeleteTenant = async () => {
+    try {
+      await rentalsAPI.deleteTenant(editingItem.id);
+      toast.success('Tenant deleted successfully!');
+      setShowDeleteTenantModal(false);
+      setEditingItem(null);
+      fetchTableData(); // Only reload the table
+    } catch (error) {
+      console.error('Error deleting tenant:', error);
+      const errorMessage = error.response?.data?.message || 'Failed to delete tenant';
+      toast.error(errorMessage);
+    }
+  };
+
+  // Contract CRUD Handlers
+  const handleCreateContract = async (formData) => {
+    try {
+      console.log('Sending contract data:', formData);
+      await rentalsAPI.createContract(formData);
+      toast.success('Contract created successfully!');
+      setShowContractModal(false);
+      fetchTableData(); // Only reload the table
+    } catch (error) {
+      console.error('Error creating contract:', error);
+      console.error('Error response:', error.response?.data);
+      const errorMessage = error.response?.data?.message || 'Failed to create contract';
+      toast.error(errorMessage);
+    }
+  };
+
+  const handleEditContract = async (formData) => {
+    try {
+      await rentalsAPI.updateContract(editingItem.id, formData);
+      toast.success('Contract updated successfully!');
+      setShowEditContractModal(false);
+      setEditingItem(null);
+      fetchTableData(); // Only reload the table
+    } catch (error) {
+      console.error('Error updating contract:', error);
+      const errorMessage = error.response?.data?.message || 'Failed to update contract';
+      toast.error(errorMessage);
+    }
+  };
+
+  const handleDeleteContract = async () => {
+    try {
+      await rentalsAPI.deleteContract(editingItem.id);
+      toast.success('Contract deleted successfully!');
+      setShowDeleteContractModal(false);
+      setEditingItem(null);
+      fetchTableData(); // Only reload the table
+    } catch (error) {
+      console.error('Error deleting contract:', error);
+      const errorMessage = error.response?.data?.message || 'Failed to delete contract';
+      toast.error(errorMessage);
+    }
+  };
+
+  // Payment CRUD Handlers
+  const handleCreatePayment = async (formData) => {
+    try {
+      await rentalsAPI.createPayment(formData);
+      toast.success('Payment created successfully!');
+      setShowPaymentModal(false);
+      fetchTableData(); // Only reload the table
+    } catch (error) {
+      console.error('Error creating payment:', error);
+      const errorMessage = error.response?.data?.message || 'Failed to create payment';
+      toast.error(errorMessage);
+    }
+  };
+
+  const handleEditPayment = async (formData) => {
+    try {
+      await rentalsAPI.updatePayment(editingItem.id, formData);
+      toast.success('Payment updated successfully!');
+      setShowEditPaymentModal(false);
+      setEditingItem(null);
+      fetchTableData(); // Only reload the table
+    } catch (error) {
+      console.error('Error updating payment:', error);
+      const errorMessage = error.response?.data?.message || 'Failed to update payment';
+      toast.error(errorMessage);
+    }
+  };
+
+  const handleDeletePayment = async () => {
+    try {
+      await rentalsAPI.deletePayment(editingItem.id);
+      toast.success('Payment deleted successfully!');
+      setShowDeletePaymentModal(false);
+      setEditingItem(null);
+      fetchTableData(); // Only reload the table
+    } catch (error) {
+      console.error('Error deleting payment:', error);
+      const errorMessage = error.response?.data?.message || 'Failed to delete payment';
+      toast.error(errorMessage);
+    }
+  };
+
+  // Maintenance CRUD Handlers
+  const handleCreateMaintenance = async (formData) => {
+    try {
+      await rentalsAPI.createMaintenanceRequest(formData);
+      toast.success('Maintenance request created successfully!');
+      setShowMaintenanceModal(false);
+      fetchTableData(); // Only reload the table
+    } catch (error) {
+      console.error('Error creating maintenance request:', error);
+      const errorMessage = error.response?.data?.message || 'Failed to create maintenance request';
+      toast.error(errorMessage);
+    }
+  };
+
+  const handleEditMaintenance = async (formData) => {
+    try {
+      await rentalsAPI.updateMaintenanceRequest(editingItem.id, formData);
+      toast.success('Maintenance request updated successfully!');
+      setShowEditMaintenanceModal(false);
+      setEditingItem(null);
+      fetchTableData(); // Only reload the table
+    } catch (error) {
+      console.error('Error updating maintenance request:', error);
+      const errorMessage = error.response?.data?.message || 'Failed to update maintenance request';
+      toast.error(errorMessage);
+    }
+  };
+
+  const handleDeleteMaintenance = async () => {
+    try {
+      await rentalsAPI.deleteMaintenanceRequest(editingItem.id);
+      toast.success('Maintenance request deleted successfully!');
+      setShowDeleteMaintenanceModal(false);
+      setEditingItem(null);
+      fetchTableData(); // Only reload the table
+    } catch (error) {
+      console.error('Error deleting maintenance request:', error);
+      const errorMessage = error.response?.data?.message || 'Failed to delete maintenance request';
+      toast.error(errorMessage);
+    }
+  };
 
   if (loading) {
     return (
@@ -835,31 +869,46 @@ const Rentals = () => {
           icon={<Building2 className="w-6 h-6" />}
           size="md"
         >
-          <form className="space-y-6" onSubmit={e => { e.preventDefault(); /* handle add property */ }}>
+          <form className="space-y-6" onSubmit={(e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const propertyData = {
+              name: formData.get('name'),
+              type: formData.get('type'),
+              location: formData.get('location'),
+              size: formData.get('size'),
+              monthly_rate: formData.get('monthly_rate'),
+              status: formData.get('status')
+            };
+            handleCreateProperty(propertyData);
+          }}>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Property Name</label>
-                <input type="text" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" required />
+                <input name="name" type="text" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" required />
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Type</label>
-                <input type="text" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" required />
+                <select name="type" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" required>
+                  <option value="Commercial">Commercial</option>
+                  <option value="Residential">Residential</option>
+                </select>
               </div>
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-slate-700 mb-1">Location</label>
-                <input type="text" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" required />
+                <input name="location" type="text" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" required />
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Size (sqm)</label>
-                <input type="number" min="1" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" required />
+                <input name="size" type="number" min="1" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" required />
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Monthly Rate (₱)</label>
-                <input type="number" min="0" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" required />
+                <input name="monthly_rate" type="number" min="0" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" required />
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Status</label>
-                <select className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" required>
+                <select name="status" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" required>
                   <option value="Occupied">Occupied</option>
                   <option value="Vacant">Vacant</option>
                   <option value="Under Maintenance">Under Maintenance</option>
@@ -884,31 +933,66 @@ const Rentals = () => {
           icon={<Users className="w-6 h-6" />}
           size="md"
         >
-          <form className="space-y-6" onSubmit={e => { e.preventDefault(); /* handle add tenant */ }}>
+          <form className="space-y-6" onSubmit={(e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const tenantData = {
+              name: formData.get('name'),
+              business_name: formData.get('business_name'),
+              email: formData.get('email'),
+              contact_number: formData.get('contact_number'),
+              property_rented_id: formData.get('property_rented_id'),
+              contract_status: formData.get('contract_status'),
+              deposit_paid: formData.get('deposit_paid')
+            };
+            handleCreateTenant(tenantData);
+          }}>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Full Name</label>
-                <input type="text" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" required />
+                <input name="name" type="text" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" required />
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Business Name</label>
-                <input type="text" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" />
+                <input name="business_name" type="text" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
-                <input type="email" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" required />
+                <input name="email" type="email" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" required />
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Contact Number</label>
-                <input type="tel" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" required />
+                <input name="contact_number" type="tel" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" required />
               </div>
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-slate-700 mb-1">Address</label>
-                <textarea rows="3" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" required></textarea>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Assign Property (Optional)</label>
+                <select name="property_rented_id" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500">
+                  <option value="">Select Available Property</option>
+                  {properties
+                    .filter(property => {
+                      // Show only properties without active contracts (vacant/available)
+                      return !contracts.some(c => 
+                        c.propertyId == property.id && 
+                        c.status === 'Active'
+                      );
+                    })
+                    .map(property => (
+                      <option key={property.id} value={property.id}>{property.name} - {property.location}</option>
+                    ))}
+                </select>
+                <p className="text-xs text-slate-500 mt-1">Assign this tenant to an available property (optional)</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Security Deposit (₱)</label>
-                <input type="number" min="0" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" required />
+                <input name="deposit_paid" type="number" min="0" step="0.01" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" required />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Contract Status</label>
+                <select name="contract_status" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" required>
+                  <option value="Active">Active</option>
+                  <option value="Inactive">Inactive</option>
+                  <option value="Expired">Expired</option>
+                </select>
               </div>
             </div>
             <div className="flex justify-end gap-2 pt-4">
@@ -923,30 +1007,44 @@ const Rentals = () => {
       {showContractModal && (
         <Modal
           isOpen={showContractModal}
-          onClose={() => setShowContractModal(false)}
+          onClose={() => {
+            setShowContractModal(false);
+            console.log('Contract modal closed - Contracts data:', contracts);
+          }}
           title="Add Contract"
           subtitle="Enter contract details below"
           icon={<FileText className="w-6 h-6" />}
           size="md"
         >
-          <form className="space-y-6" onSubmit={e => { e.preventDefault(); /* handle add contract */ }}>
+          <form className="space-y-6" onSubmit={(e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const contractData = {
+              contract_number: formData.get('contract_number'),
+              property_id: formData.get('property_id'),
+              tenant_id: formData.get('tenant_id'),
+              start_date: formData.get('start_date'),
+              end_date: formData.get('end_date'),
+              monthly_rent: formData.get('monthly_rent'),
+              deposit: formData.get('deposit'),
+              status: formData.get('status')
+            };
+            handleCreateContract(contractData);
+          }}>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Contract Number</label>
-                <input type="text" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" required />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Property</label>
-                <select className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" required>
-                  <option value="">Select Property</option>
-                  {properties.map(property => (
-                    <option key={property.id} value={property.id}>{property.name}</option>
-                  ))}
-                </select>
+                <input name="contract_number" type="text" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" required />
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Tenant</label>
-                <select className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" required>
+                <select 
+                  name="tenant_id" 
+                  value={selectedContractTenant}
+                  onChange={(e) => setSelectedContractTenant(e.target.value)}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" 
+                  required
+                >
                   <option value="">Select Tenant</option>
                   {tenants.map(tenant => (
                     <option key={tenant.id} value={tenant.id}>{tenant.name}</option>
@@ -954,20 +1052,54 @@ const Rentals = () => {
                 </select>
               </div>
               <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Property</label>
+                <select 
+                  name="property_id" 
+                  value={selectedContractProperty}
+                  onChange={(e) => setSelectedContractProperty(e.target.value)}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" 
+                  required
+                >
+                  <option value="">Select Property</option>
+                  {properties
+                    .filter(property => {
+                      // Show only VACANT properties (no active contracts)
+                      // A property can only be rented to ONE tenant at a time
+                      const hasActiveContract = contracts.some(c => 
+                        c.propertyId == property.id && 
+                        c.status === 'Active'
+                      );
+                      console.log(`Property ${property.name} (ID: ${property.id}) - Has Active Contract: ${hasActiveContract}`);
+                      return !hasActiveContract;
+                    })
+                    .map(property => (
+                      <option key={property.id} value={property.id}>{property.name} - {property.location}</option>
+                    ))}
+                </select>
+              </div>
+              <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Start Date</label>
-                <input type="date" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" required />
+                <input name="start_date" type="date" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" required />
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">End Date</label>
-                <input type="date" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" required />
+                <input name="end_date" type="date" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" required />
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Monthly Rent (₱)</label>
-                <input type="number" min="0" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" required />
+                <input name="monthly_rent" type="number" min="0" step="0.01" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" required />
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Security Deposit (₱)</label>
-                <input type="number" min="0" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" required />
+                <input name="deposit" type="number" min="0" step="0.01" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" required />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Status</label>
+                <select name="status" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" required>
+                  <option value="Active">Active</option>
+                  <option value="Expired">Expired</option>
+                  <option value="Terminated">Terminated</option>
+                </select>
               </div>
             </div>
             <div className="flex justify-end gap-2 pt-4">
@@ -988,15 +1120,34 @@ const Rentals = () => {
           icon={<DollarSign className="w-6 h-6" />}
           size="md"
         >
-          <form className="space-y-6" onSubmit={e => { e.preventDefault(); /* handle add payment */ }}>
+          <form className="space-y-6" onSubmit={(e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const paymentData = {
+              tenant_id: formData.get('tenant_id'),
+              property_id: formData.get('property_id'),
+              amount: formData.get('amount'),
+              month: formData.get('month'),
+              method: formData.get('method'),
+              payment_date: formData.get('payment_date'),
+              status: formData.get('status')
+            };
+            handleCreatePayment(paymentData);
+          }}>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Payment Number</label>
-                <input type="text" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" required />
+                <label className="block text-sm font-medium text-slate-700 mb-1">Payment Number (Auto-generated)</label>
+                <input name="payment_number" type="text" className="w-full border border-slate-300 rounded-lg px-3 py-2 bg-slate-100 text-slate-500 cursor-not-allowed" placeholder="Auto-generated" disabled />
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Tenant</label>
-                <select className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" required>
+                <select 
+                  name="tenant_id" 
+                  value={selectedPaymentTenant}
+                  onChange={(e) => setSelectedPaymentTenant(e.target.value)}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" 
+                  required
+                >
                   <option value="">Select Tenant</option>
                   {tenants.map(tenant => (
                     <option key={tenant.id} value={tenant.id}>{tenant.name}</option>
@@ -1005,24 +1156,41 @@ const Rentals = () => {
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Property</label>
-                <select className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" required>
+                <select 
+                  name="property_id" 
+                  value={selectedPaymentProperty}
+                  onChange={(e) => setSelectedPaymentProperty(e.target.value)}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" 
+                  required
+                >
                   <option value="">Select Property</option>
-                  {properties.map(property => (
-                    <option key={property.id} value={property.id}>{property.name}</option>
-                  ))}
+                  {properties
+                    .filter(property => {
+                      if (!selectedPaymentTenant) return true; // Show all if no tenant selected
+                      
+                      // Show properties that the tenant is currently renting (active contracts)
+                      return contracts.some(c => 
+                        c.propertyId == property.id && 
+                        c.tenantId == selectedPaymentTenant && 
+                        c.status === 'Active'
+                      );
+                    })
+                    .map(property => (
+                      <option key={property.id} value={property.id}>{property.name} - {property.location}</option>
+                    ))}
                 </select>
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Amount (₱)</label>
-                <input type="number" min="0" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" required />
+                <input name="amount" type="number" min="0" step="0.01" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" required />
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Month Covered</label>
-                <input type="text" placeholder="e.g., November 2025" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" required />
+                <input name="month" type="text" placeholder="e.g., November 2025" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" required />
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Payment Method</label>
-                <select className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" required>
+                <select name="method" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" required>
                   <option value="Cash">Cash</option>
                   <option value="Bank Transfer">Bank Transfer</option>
                   <option value="GCash">GCash</option>
@@ -1031,11 +1199,17 @@ const Rentals = () => {
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Payment Date</label>
-                <input type="date" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" required />
+                <input 
+                  name="payment_date" 
+                  type="date" 
+                  defaultValue={new Date().toISOString().split('T')[0]}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" 
+                  required 
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Status</label>
-                <select className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" required>
+                <select name="status" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" required>
                   <option value="Paid">Paid</option>
                   <option value="Pending">Pending</option>
                   <option value="Overdue">Overdue</option>
@@ -1060,15 +1234,28 @@ const Rentals = () => {
           icon={<Wrench className="w-6 h-6" />}
           size="md"
         >
-          <form className="space-y-6" onSubmit={e => { e.preventDefault(); /* handle add maintenance */ }}>
+          <form className="space-y-6" onSubmit={(e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const maintenanceData = {
+              property_id: formData.get('property_id'),
+              tenant_id: formData.get('tenant_id'),
+              issue: formData.get('issue'),
+              priority: formData.get('priority'),
+              status: formData.get('status'),
+              date_reported: formData.get('date_reported'),
+              assigned_to: formData.get('assigned_to')
+            };
+            handleCreateMaintenance(maintenanceData);
+          }}>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Request Number</label>
-                <input type="text" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" required />
+                <label className="block text-sm font-medium text-slate-700 mb-1">Request Number (Auto-generated)</label>
+                <input name="request_number" type="text" className="w-full border border-slate-300 rounded-lg px-3 py-2 bg-slate-100 text-slate-500 cursor-not-allowed" placeholder="Auto-generated" disabled />
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Property</label>
-                <select className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" required>
+                <select name="property_id" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" required>
                   <option value="">Select Property</option>
                   {properties.map(property => (
                     <option key={property.id} value={property.id}>{property.name}</option>
@@ -1077,7 +1264,7 @@ const Rentals = () => {
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Tenant</label>
-                <select className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500">
+                <select name="tenant_id" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500">
                   <option value="">Select Tenant (if applicable)</option>
                   {tenants.map(tenant => (
                     <option key={tenant.id} value={tenant.id}>{tenant.name}</option>
@@ -1086,24 +1273,32 @@ const Rentals = () => {
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Priority</label>
-                <select className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" required>
+                <select name="priority" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" required>
                   <option value="Low">Low</option>
                   <option value="Medium">Medium</option>
                   <option value="High">High</option>
                   <option value="Critical">Critical</option>
                 </select>
               </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Status</label>
+                <select name="status" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" required>
+                  <option value="Pending">Pending</option>
+                  <option value="In Progress">In Progress</option>
+                  <option value="Completed">Completed</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Date Reported</label>
+                <input name="date_reported" type="date" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" required />
+              </div>
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-slate-700 mb-1">Issue Description</label>
-                <textarea rows="4" placeholder="Describe the maintenance issue in detail..." className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" required></textarea>
+                <textarea name="issue" rows="4" placeholder="Describe the maintenance issue in detail..." className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" required></textarea>
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Assigned To</label>
-                <input type="text" placeholder="Staff member name" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Estimated Cost (₱)</label>
-                <input type="number" min="0" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" />
+                <input name="assigned_to" type="text" placeholder="Staff member name" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" />
               </div>
             </div>
             <div className="flex justify-end gap-2 pt-4">
@@ -2063,7 +2258,7 @@ const Rentals = () => {
                   </h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <label className="text-sm text-slate-500 font-medium">Property Rented</label>
+                      <label className="text-sm text-slate-500 font-medium">Current Property</label>
                       <p className="text-slate-900 font-semibold">{selectedItem.propertyRented || 'No active rental'}</p>
                     </div>
                     <div>
@@ -2384,50 +2579,80 @@ const Rentals = () => {
           icon={<Building2 className="w-6 h-6" />}
           size="md"
         >
-          <form className="space-y-6" onSubmit={e => { e.preventDefault(); /* handle edit property */ }}>
+          <form className="space-y-6" onSubmit={(e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const propertyData = {
+              name: formData.get('name'),
+              type: formData.get('type'),
+              location: formData.get('location'),
+              size: formData.get('size'),
+              monthly_rate: formData.get('monthly_rate'),
+              status: formData.get('status')
+            };
+            handleEditProperty(propertyData);
+          }}>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-2">Property Name</label>
                 <input
+                  name="name"
                   type="text"
                   defaultValue={editingItem.name || ''}
                   className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-colors"
                   placeholder="Enter property name"
+                  required
                 />
               </div>
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-2">Property Type</label>
-                <select defaultValue={editingItem.type || ''} className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-colors">
-                  <option value="">Select type</option>
-                  <option value="apartment">Apartment</option>
-                  <option value="house">House</option>
-                  <option value="commercial">Commercial</option>
+                <select name="type" defaultValue={editingItem.type || ''} className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-colors" required>
+                  <option value="Commercial">Commercial</option>
+                  <option value="Residential">Residential</option>
                 </select>
               </div>
               <div className="md:col-span-2">
-                <label className="block text-sm font-semibold text-slate-700 mb-2">Address</label>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Location</label>
                 <input
+                  name="location"
                   type="text"
-                  defaultValue={editingItem.address || ''}
+                  defaultValue={editingItem.location || ''}
                   className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-colors"
-                  placeholder="Enter full address"
+                  placeholder="Enter location details"
+                  required
                 />
               </div>
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">Monthly Rent (₱)</label>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Size (sqm)</label>
                 <input
+                  name="size"
                   type="number"
-                  defaultValue={editingItem.monthlyRent || ''}
+                  defaultValue={editingItem.size || ''}
+                  className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-colors"
+                  placeholder="0"
+                  min="1"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Monthly Rate (₱)</label>
+                <input
+                  name="monthly_rate"
+                  type="number"
+                  defaultValue={editingItem.monthlyRate || ''}
                   className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-colors"
                   placeholder="0.00"
+                  min="0"
+                  step="0.01"
+                  required
                 />
               </div>
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-2">Status</label>
-                <select defaultValue={editingItem.status || ''} className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-colors">
-                  <option value="available">Available</option>
-                  <option value="occupied">Occupied</option>
-                  <option value="maintenance">Under Maintenance</option>
+                <select name="status" defaultValue={editingItem.status || ''} className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-colors" required>
+                  <option value="Occupied">Occupied</option>
+                  <option value="Vacant">Vacant</option>
+                  <option value="Under Maintenance">Under Maintenance</option>
                 </select>
               </div>
             </div>
@@ -2484,10 +2709,7 @@ const Rentals = () => {
                 Cancel
               </button>
               <button
-                onClick={() => {
-                  // handle delete property
-                  setShowDeletePropertyModal(false);
-                }}
+                onClick={() => handleDeleteProperty()}
                 className="flex-1 px-4 py-3 bg-gradient-to-r from-rose-600 to-red-600 text-white rounded-lg font-semibold hover:shadow-lg transition-all"
               >
                 Delete Property
@@ -2507,20 +2729,36 @@ const Rentals = () => {
           icon={<Users className="w-6 h-6" />}
           size="md"
         >
-          <form className="space-y-6" onSubmit={e => { e.preventDefault(); /* handle edit tenant */ }}>
+          <form className="space-y-6" onSubmit={(e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const tenantData = {
+              name: formData.get('name'),
+              business_name: formData.get('business_name'),
+              email: formData.get('email'),
+              contact_number: formData.get('contact_number'),
+              property_rented_id: formData.get('property_rented_id'),
+              contract_status: formData.get('contract_status'),
+              deposit_paid: formData.get('deposit_paid')
+            };
+            handleEditTenant(tenantData);
+          }}>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-2">Full Name</label>
                 <input
+                  name="name"
                   type="text"
                   defaultValue={editingItem.name || ''}
                   className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-colors"
                   placeholder="Enter full name"
+                  required
                 />
               </div>
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-2">Business Name (Optional)</label>
                 <input
+                  name="business_name"
                   type="text"
                   defaultValue={editingItem.businessName || ''}
                   className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-colors"
@@ -2530,29 +2768,63 @@ const Rentals = () => {
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-2">Contact Number</label>
                 <input
+                  name="contact_number"
                   type="tel"
                   defaultValue={editingItem.contactNumber || ''}
                   className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-colors"
                   placeholder="Enter contact number"
+                  required
                 />
               </div>
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-2">Email</label>
                 <input
+                  name="email"
                   type="email"
                   defaultValue={editingItem.email || ''}
                   className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-colors"
                   placeholder="Enter email address"
+                  required
                 />
               </div>
               <div className="md:col-span-2">
                 <label className="block text-sm font-semibold text-slate-700 mb-2">Deposit Paid (₱)</label>
                 <input
+                  name="deposit_paid"
                   type="number"
                   defaultValue={editingItem.depositPaid || ''}
                   className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-colors"
                   placeholder="0.00"
+                  min="0"
+                  step="0.01"
+                  required
                 />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Assigned Property</label>
+                <select name="property_rented_id" defaultValue={editingItem.propertyRentedId || ''} className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-colors">
+                  <option value="">Select Available Property</option>
+                  {properties
+                    .filter(property => {
+                      // Show vacant properties OR the current property assigned to this tenant
+                      return !contracts.some(c => 
+                        c.propertyId == property.id && 
+                        c.status === 'Active'
+                      ) || property.id == editingItem.propertyRentedId;
+                    })
+                    .map(property => (
+                      <option key={property.id} value={property.id}>{property.name} - {property.location}</option>
+                    ))}
+                </select>
+                <p className="text-xs text-slate-500 mt-1">Change property assignment for this tenant</p>
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Contract Status</label>
+                <select name="contract_status" defaultValue={editingItem.contractStatus || ''} className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-colors" required>
+                  <option value="Active">Active</option>
+                  <option value="Inactive">Inactive</option>
+                  <option value="Expired">Expired</option>
+                </select>
               </div>
             </div>
             <div className="flex gap-3 pt-6 border-t border-slate-200">
@@ -2608,10 +2880,7 @@ const Rentals = () => {
                 Cancel
               </button>
               <button
-                onClick={() => {
-                  // handle delete tenant
-                  setShowDeleteTenantModal(false);
-                }}
+                onClick={() => handleDeleteTenant()}
                 className="flex-1 px-4 py-3 bg-gradient-to-r from-rose-600 to-red-600 text-white rounded-lg font-semibold hover:shadow-lg transition-all"
               >
                 Delete Tenant
@@ -2631,57 +2900,103 @@ const Rentals = () => {
           icon={<FileText className="w-6 h-6" />}
           size="md"
         >
-          <form className="space-y-6" onSubmit={e => { e.preventDefault(); /* handle edit contract */ }}>
+          <form className="space-y-6" onSubmit={(e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const contractData = {
+              contract_number: formData.get('contract_number'),
+              property_id: formData.get('property_id'),
+              tenant_id: formData.get('tenant_id'),
+              start_date: formData.get('start_date'),
+              end_date: formData.get('end_date'),
+              monthly_rent: formData.get('monthly_rent'),
+              deposit: formData.get('deposit'),
+              status: formData.get('status')
+            };
+            handleEditContract(contractData);
+          }}>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-2">Contract Number</label>
                 <input
+                  name="contract_number"
                   type="text"
                   defaultValue={editingItem.contractNumber || ''}
                   className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-colors"
                   placeholder="Enter contract number"
+                  required
                 />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Tenant</label>
+                <select name="tenant_id" defaultValue={editingItem.tenantId || ''} className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-colors" required>
+                  <option value="">Select Tenant</option>
+                  {tenants.map(tenant => (
+                    <option key={tenant.id} value={tenant.id}>{tenant.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Property</label>
+                <select name="property_id" defaultValue={editingItem.propertyId || ''} className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-colors" required>
+                  <option value="">Select Property</option>
+                  {properties.map(property => (
+                    <option key={property.id} value={property.id}>{property.name} - {property.location}</option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-2">Monthly Rent (₱)</label>
                 <input
+                  name="monthly_rent"
                   type="number"
                   defaultValue={editingItem.monthlyRent || ''}
                   className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-colors"
                   placeholder="0.00"
+                  min="0"
+                  step="0.01"
+                  required
                 />
               </div>
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-2">Deposit (₱)</label>
                 <input
+                  name="deposit"
                   type="number"
                   defaultValue={editingItem.deposit || ''}
                   className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-colors"
                   placeholder="0.00"
+                  min="0"
+                  step="0.01"
+                  required
                 />
               </div>
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-2">Status</label>
-                <select defaultValue={editingItem.status || ''} className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-colors">
-                  <option value="active">Active</option>
-                  <option value="expired">Expired</option>
-                  <option value="terminated">Terminated</option>
+                <select name="status" defaultValue={editingItem.status || ''} className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-colors" required>
+                  <option value="Active">Active</option>
+                  <option value="Expired">Expired</option>
+                  <option value="Terminated">Terminated</option>
                 </select>
               </div>
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-2">Start Date</label>
                 <input
+                  name="start_date"
                   type="date"
                   defaultValue={editingItem.startDate || ''}
                   className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-colors"
+                  required
                 />
               </div>
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-2">End Date</label>
                 <input
+                  name="end_date"
                   type="date"
                   defaultValue={editingItem.endDate || ''}
                   className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-colors"
+                  required
                 />
               </div>
             </div>
@@ -2739,10 +3054,7 @@ const Rentals = () => {
                 Cancel
               </button>
               <button
-                onClick={() => {
-                  // handle delete contract
-                  setShowDeleteContractModal(false);
-                }}
+                onClick={() => handleDeleteContract()}
                 className="flex-1 px-4 py-3 bg-gradient-to-r from-rose-600 to-red-600 text-white rounded-lg font-semibold hover:shadow-lg transition-all"
               >
                 Delete Contract
@@ -2762,46 +3074,87 @@ const Rentals = () => {
           icon={<DollarSign className="w-6 h-6" />}
           size="md"
         >
-          <form className="space-y-6" onSubmit={e => { e.preventDefault(); /* handle edit payment */ }}>
+          <form className="space-y-6" onSubmit={(e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const paymentData = {
+              payment_number: formData.get('payment_number'),
+              tenant_id: formData.get('tenant_id'),
+              property_id: formData.get('property_id'),
+              amount: formData.get('amount'),
+              month: formData.get('month'),
+              status: formData.get('status'),
+              payment_date: formData.get('payment_date'),
+              method: formData.get('method')
+            };
+            handleEditPayment(paymentData);
+          }}>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">Payment Number</label>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Payment Number (Read-only)</label>
                 <input
+                  name="payment_number"
                   type="text"
                   defaultValue={editingItem.paymentNumber || ''}
-                  className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-colors"
-                  placeholder="Enter payment number"
+                  className="w-full px-4 py-3 border border-slate-300 rounded-lg bg-slate-100 text-slate-500 cursor-not-allowed"
+                  placeholder="Payment number"
+                  disabled
                 />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Tenant</label>
+                <select name="tenant_id" defaultValue={editingItem.tenantId || ''} className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-colors" required>
+                  <option value="">Select Tenant</option>
+                  {tenants.map(tenant => (
+                    <option key={tenant.id} value={tenant.id}>{tenant.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Property</label>
+                <select name="property_id" defaultValue={editingItem.propertyId || ''} className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-colors" required>
+                  <option value="">Select Property</option>
+                  {properties.map(property => (
+                    <option key={property.id} value={property.id}>{property.name} - {property.location}</option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-2">Amount (₱)</label>
                 <input
+                  name="amount"
                   type="number"
                   defaultValue={editingItem.amount || ''}
                   className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-colors"
                   placeholder="0.00"
+                  min="0"
+                  step="0.01"
+                  required
                 />
               </div>
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-2">Month</label>
                 <input
+                  name="month"
                   type="text"
                   defaultValue={editingItem.month || ''}
                   className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-colors"
                   placeholder="e.g., January 2024"
+                  required
                 />
               </div>
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-2">Status</label>
-                <select defaultValue={editingItem.status || ''} className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-colors">
-                  <option value="paid">Paid</option>
-                  <option value="pending">Pending</option>
-                  <option value="overdue">Overdue</option>
+                <select name="status" defaultValue={editingItem.status || ''} className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-colors" required>
+                  <option value="Paid">Paid</option>
+                  <option value="Pending">Pending</option>
+                  <option value="Overdue">Overdue</option>
                 </select>
               </div>
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-2">Payment Date</label>
                 <input
+                  name="payment_date"
                   type="date"
                   defaultValue={editingItem.paymentDate || ''}
                   className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-colors"
@@ -2809,12 +3162,12 @@ const Rentals = () => {
               </div>
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-2">Payment Method</label>
-                <select defaultValue={editingItem.method || ''} className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-colors">
+                <select name="method" defaultValue={editingItem.method || ''} className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-colors">
                   <option value="">Select method</option>
-                  <option value="cash">Cash</option>
-                  <option value="bank_transfer">Bank Transfer</option>
-                  <option value="check">Check</option>
-                  <option value="online">Online Payment</option>
+                  <option value="Cash">Cash</option>
+                  <option value="Bank Transfer">Bank Transfer</option>
+                  <option value="GCash">GCash</option>
+                  <option value="Check">Check</option>
                 </select>
               </div>
             </div>
@@ -2872,10 +3225,7 @@ const Rentals = () => {
                 Cancel
               </button>
               <button
-                onClick={() => {
-                  // handle delete payment
-                  setShowDeletePaymentModal(false);
-                }}
+                onClick={() => handleDeletePayment()}
                 className="flex-1 px-4 py-3 bg-gradient-to-r from-rose-600 to-red-600 text-white rounded-lg font-semibold hover:shadow-lg transition-all"
               >
                 Delete Payment
@@ -2895,51 +3245,97 @@ const Rentals = () => {
           icon={<Wrench className="w-6 h-6" />}
           size="md"
         >
-          <form className="space-y-6" onSubmit={e => { e.preventDefault(); /* handle edit maintenance */ }}>
+          <form className="space-y-6" onSubmit={(e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const maintenanceData = {
+              request_number: formData.get('request_number'),
+              property_id: formData.get('property_id'),
+              tenant_id: formData.get('tenant_id'),
+              issue: formData.get('issue'),
+              priority: formData.get('priority'),
+              status: formData.get('status'),
+              date_reported: formData.get('date_reported'),
+              assigned_to: formData.get('assigned_to')
+            };
+            handleEditMaintenance(maintenanceData);
+          }}>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">Request Number</label>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Request Number (Read-only)</label>
                 <input
+                  name="request_number"
                   type="text"
                   defaultValue={editingItem.requestNumber || ''}
-                  className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-colors"
-                  placeholder="Enter request number"
+                  className="w-full px-4 py-3 border border-slate-300 rounded-lg bg-slate-100 text-slate-500 cursor-not-allowed"
+                  placeholder="Request number"
+                  disabled
                 />
               </div>
               <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Property</label>
+                <select name="property_id" defaultValue={editingItem.propertyId || ''} className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-colors" required>
+                  <option value="">Select Property</option>
+                  {properties.map(property => (
+                    <option key={property.id} value={property.id}>{property.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Tenant</label>
+                <select name="tenant_id" defaultValue={editingItem.tenantId || ''} className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-colors">
+                  <option value="">Select Tenant (Optional)</option>
+                  {tenants.map(tenant => (
+                    <option key={tenant.id} value={tenant.id}>{tenant.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-2">Priority</label>
-                <select defaultValue={editingItem.priority || ''} className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-colors">
-                  <option value="low">Low</option>
-                  <option value="medium">Medium</option>
-                  <option value="high">High</option>
-                  <option value="urgent">Urgent</option>
+                <select name="priority" defaultValue={editingItem.priority || ''} className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-colors" required>
+                  <option value="Low">Low</option>
+                  <option value="Medium">Medium</option>
+                  <option value="High">High</option>
+                  <option value="Critical">Critical</option>
                 </select>
               </div>
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-2">Status</label>
-                <select defaultValue={editingItem.status || ''} className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-colors">
-                  <option value="pending">Pending</option>
-                  <option value="in_progress">In Progress</option>
-                  <option value="completed">Completed</option>
-                  <option value="cancelled">Cancelled</option>
+                <select name="status" defaultValue={editingItem.status || ''} className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-colors" required>
+                  <option value="Pending">Pending</option>
+                  <option value="In Progress">In Progress</option>
+                  <option value="Completed">Completed</option>
                 </select>
               </div>
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-2">Assigned To</label>
                 <input
+                  name="assigned_to"
                   type="text"
                   defaultValue={editingItem.assignedTo || ''}
                   className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-colors"
                   placeholder="Enter staff name"
                 />
               </div>
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Date Reported</label>
+                <input
+                  name="date_reported"
+                  type="date"
+                  defaultValue={editingItem.dateReported || ''}
+                  className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-colors"
+                  required
+                />
+              </div>
               <div className="md:col-span-2">
                 <label className="block text-sm font-semibold text-slate-700 mb-2">Issue Description</label>
                 <textarea
+                  name="issue"
                   defaultValue={editingItem.issue || ''}
                   rows={3}
                   className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-colors resize-none"
                   placeholder="Describe the maintenance issue"
+                  required
                 ></textarea>
               </div>
             </div>
@@ -2997,10 +3393,7 @@ const Rentals = () => {
                 Cancel
               </button>
               <button
-                onClick={() => {
-                  // handle delete maintenance request
-                  setShowDeleteMaintenanceModal(false);
-                }}
+                onClick={() => handleDeleteMaintenance()}
                 className="flex-1 px-4 py-3 bg-gradient-to-r from-rose-600 to-red-600 text-white rounded-lg font-semibold hover:shadow-lg transition-all"
               >
                 Delete Request

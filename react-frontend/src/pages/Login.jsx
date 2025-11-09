@@ -1,18 +1,38 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Mail, Lock, Eye, EyeOff, LogIn } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, LogIn, AlertCircle } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
+import toast from 'react-hot-toast';
 
 const Login = () => {
+  const { login } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
   const [formData, setFormData] = useState({
     email: '',
     password: ''
   });
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    // Handle login logic here
-    console.log('Login:', formData);
+    setError('');
+    setLoading(true);
+
+    try {
+      const result = await login(formData.email, formData.password);
+      
+      if (!result.success) {
+        setError(result.message);
+        toast.error(result.message);
+      }
+    } catch (error) {
+      const errorMessage = 'An error occurred. Please try again.';
+      setError(errorMessage);
+      toast.error(errorMessage);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleChange = (e) => {
@@ -40,6 +60,13 @@ const Login = () => {
 
         {/* Login Form */}
         <div className="bg-white rounded-2xl shadow-xl border border-slate-200 p-8">
+          {error && (
+            <div className="mb-6 p-4 bg-rose-50 border border-rose-200 rounded-lg flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-rose-600 flex-shrink-0 mt-0.5" />
+              <p className="text-sm text-rose-700">{error}</p>
+            </div>
+          )}
+          
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* Email Field */}
             <div>
@@ -99,9 +126,10 @@ const Login = () => {
             {/* Submit Button */}
             <button
               type="submit"
-              className="w-full bg-gradient-to-r from-cyan-600 to-teal-600 text-white py-3 rounded-xl font-semibold shadow-lg shadow-cyan-500/30 hover:shadow-xl hover:shadow-cyan-500/40 transition-all hover:scale-105 active:scale-95"
+              disabled={loading}
+              className="w-full bg-gradient-to-r from-cyan-600 to-teal-600 text-white py-3 rounded-xl font-semibold shadow-lg shadow-cyan-500/30 hover:shadow-xl hover:shadow-cyan-500/40 transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
             >
-              Sign In
+              {loading ? 'Signing In...' : 'Sign In'}
             </button>
           </form>
 

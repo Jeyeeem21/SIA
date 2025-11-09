@@ -18,12 +18,21 @@ class OrderController extends Controller
      * Only return active orders (Pending, In Progress, Cancelled)
      * Completed orders should be viewed in Reports page
      */
-    public function index()
+    public function index(Request $request)
     {
-        $orders = Order::with(['orderItems.product'])
-            ->whereIn('status', ['Pending', 'In Progress', 'Cancelled'])
-            ->orderBy('created_at', 'desc')
-            ->get();
+        $query = Order::with(['orderItems.product']);
+        
+        // If searching by order_number for void, only return Completed orders
+        if ($request->has('order_number')) {
+            $query->where('order_number', $request->order_number)
+                  ->where('status', 'Completed')
+                  ->where('is_voided', false);
+        } else {
+            // Default behavior: only show active orders
+            $query->whereIn('status', ['Pending', 'In Progress', 'Cancelled']);
+        }
+        
+        $orders = $query->orderBy('created_at', 'desc')->get();
         
         return response()->json($orders);
     }
@@ -35,7 +44,6 @@ class OrderController extends Controller
     {
         $validated = $request->validate([
             'customer_name' => 'nullable|string|max:100',
-            'service_type' => 'required|in:Printing,ID Creation,Tela Purchase,Lamination,Document Binding,Uniform,Other',
             'notes' => 'nullable|string',
             'preferred_pickup_date' => 'nullable|date',
             'order_items' => 'required|array|min:1',
@@ -45,14 +53,20 @@ class OrderController extends Controller
             'order_items.*.notes' => 'nullable|string',
         ]);
 
-        // Generate unique order number
-        $orderNumber = 'ORD-' . date('Y') . '-' . str_pad(Order::count() + 1, 4, '0', STR_PAD_LEFT);
+        // Get the first product's category for service_type
+        $firstProduct = \App\Models\Product::with('category')->find($validated['order_items'][0]['product_id']);
+        $serviceType = $firstProduct->category->category_name ?? 'Other';
+
+        // Generate unique order number based on the last order number, not count
+        $lastOrder = Order::orderBy('order_id', 'desc')->first();
+        $nextNumber = $lastOrder ? ($lastOrder->order_id + 1) : 1;
+        $orderNumber = 'ORD-' . date('Y') . '-' . str_pad($nextNumber, 4, '0', STR_PAD_LEFT);
 
         // Create order
         $order = Order::create([
             'order_number' => $orderNumber,
             'customer_name' => $validated['customer_name'] ?? null,
-            'service_type' => $validated['service_type'],
+            'service_type' => $serviceType,
             'status' => 'Pending',
             'notes' => $validated['notes'] ?? null,
             'preferred_pickup_date' => $validated['preferred_pickup_date'] ?? null,
@@ -180,6 +194,9 @@ class OrderController extends Controller
             'notes' => 'nullable|string',
         ]);
 
+        // Load order items if not already loaded
+        $order->load('orderItems');
+
         // Create payment record
         $payment = Payment::create([
             'order_id' => $order->order_id,
@@ -196,6 +213,21 @@ class OrderController extends Controller
             'status' => 'Completed',
             'completed_date' => Carbon::now(),
         ]);
+
+        // Create product transactions for OUT movements
+        foreach ($order->orderItems as $item) {
+            \App\Models\ProductTransaction::create([
+                'product_id' => $item->product_id,
+                'type' => 'OUT',
+                'quantity' => $item->quantity,
+                'unit_price' => $item->unit_price,
+                'total_amount' => $item->quantity * $item->unit_price,
+                'reference_type' => 'order',
+                'reference_id' => $order->order_id,
+                'user_id' => Auth::id(),
+                'notes' => 'Sale - Order ' . $order->order_number,
+            ]);
+        }
 
         return response()->json([
             'message' => 'Order completed successfully',
@@ -221,5 +253,122 @@ class OrderController extends Controller
         $order->delete();
 
         return response()->json(['message' => 'Order deleted successfully']);
+    }
+
+    /**
+     * Get sales history (completed orders with order items)
+     */
+    public function getSalesHistory(Request $request)
+    {
+        $query = OrderItem::with(['product', 'order.payment'])
+            ->whereHas('order', function ($q) {
+                $q->where('status', 'Completed');
+            });
+
+        // Filter by date range if provided
+        if ($request->has('start_date')) {
+            $query->whereHas('order', function ($q) use ($request) {
+                $q->whereDate('created_at', '>=', $request->start_date);
+            });
+        }
+        if ($request->has('end_date')) {
+            $query->whereHas('order', function ($q) use ($request) {
+                $q->whereDate('created_at', '<=', $request->end_date);
+            });
+        }
+
+        // Filter by period (daily/monthly/yearly)
+        if ($request->has('period')) {
+            $period = $request->period;
+            $query->whereHas('order', function ($q) use ($period) {
+                switch ($period) {
+                    case 'daily':
+                        $q->whereDate('created_at', now()->toDateString());
+                        break;
+                    case 'monthly':
+                        $q->whereYear('created_at', now()->year)
+                          ->whereMonth('created_at', now()->month);
+                        break;
+                    case 'yearly':
+                        $q->whereYear('created_at', now()->year);
+                        break;
+                }
+            });
+        }
+
+        $salesHistory = $query->orderBy('created_at', 'desc')
+            ->get()
+            ->map(function ($item) {
+                return [
+                    'id' => $item->order_item_id,
+                    'order_id' => $item->order_id,
+                    'order_number' => $item->order->order_number ?? 'N/A',
+                    'product_id' => $item->product_id,
+                    'product_name' => $item->product->product_name ?? 'N/A',
+                    'quantity' => $item->quantity,
+                    'unit_price' => $item->unit_price,
+                    'subtotal' => $item->subtotal,
+                    'service_type' => $item->order->service_type ?? 'Other',
+                    'payment_method' => $item->order->payment->payment_method ?? 'N/A',
+                    'created_at' => $item->order->created_at,
+                ];
+            });
+
+        return response()->json($salesHistory);
+    }
+
+    /**
+     * Void an order
+     */
+    public function voidOrder(Request $request, $id)
+    {
+        $validated = $request->validate([
+            'void_reason' => 'required|string|max:500',
+        ]);
+
+        $order = Order::findOrFail($id);
+
+        // Check if order is already voided
+        if ($order->is_voided) {
+            return response()->json(['message' => 'Order is already voided'], 400);
+        }
+
+        // Allow voiding any order (including Completed) - admin authentication required on frontend
+
+        // Restore inventory for all order items
+        foreach ($order->orderItems as $orderItem) {
+            $inventory = Inventory::where('product_id', $orderItem->product_id)->first();
+            if ($inventory) {
+                $inventory->quantity += $orderItem->quantity;
+                $inventory->save();
+            }
+
+            // Create reverse transaction with logged-in user
+            \App\Models\ProductTransaction::create([
+                'product_id' => $orderItem->product_id,
+                'type' => 'IN',
+                'quantity' => $orderItem->quantity,
+                'unit_price' => $orderItem->unit_price,
+                'total_amount' => $orderItem->quantity * $orderItem->unit_price,
+                'reference_type' => 'order_void',
+                'reference_id' => $order->order_id,
+                'notes' => 'Voided Order: ' . $order->order_number,
+                'user_id' => Auth::id(), // Current logged-in user
+            ]);
+        }
+
+        // Update order with logged-in user who voided it
+        $order->update([
+            'is_voided' => true,
+            'void_reason' => $validated['void_reason'],
+            'voided_by' => Auth::id(), // Current logged-in user
+            'voided_at' => now(),
+            'status' => 'Cancelled',
+        ]);
+
+        return response()->json([
+            'message' => 'Order voided successfully',
+            'order' => $order->load('orderItems.product')
+        ]);
     }
 }

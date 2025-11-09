@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
 import { User, Lock, Users, Save, Plus, Edit, Trash2, Shield, Key, X, Check } from 'lucide-react';
 import { settingsAPI } from '../services/api';
+import { useAuth } from '../contexts/AuthContext';
 import toast from 'react-hot-toast';
 
 const Settings = () => {
+  const { user } = useAuth(); // Get logged-in user from AuthContext
   const [activeTab, setActiveTab] = useState('profile');
   const [loading, setLoading] = useState(false);
   const [profile, setProfile] = useState(null);
@@ -51,6 +53,17 @@ const Settings = () => {
     { id: 'security', label: 'Security', icon: Lock },
     { id: 'accounts', label: 'Account Management', icon: Users },
   ];
+
+  // Initialize profile form with logged-in user data
+  useEffect(() => {
+    if (user) {
+      setProfileForm({
+        full_name: user.name || '',
+        email: user.email || '',
+        phone: user.phone || '',
+      });
+    }
+  }, [user]);
 
   useEffect(() => {
     if (activeTab === 'profile' || activeTab === 'security') {
@@ -383,7 +396,7 @@ const Settings = () => {
 
               <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-6 p-4 sm:p-6 bg-slate-50 rounded-xl">
                 <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-gradient-to-br from-cyan-500 to-teal-600 flex items-center justify-center text-white text-2xl sm:text-3xl font-bold shadow-lg">
-                  JD
+                  {(user?.name || 'User').split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
                 </div>
                 <div className="text-center sm:text-left">
                   <button className="px-4 py-2 bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 transition-colors text-sm md:text-base">
@@ -393,46 +406,55 @@ const Settings = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Full Name</label>
-                  <input
-                    type="text"
-                    defaultValue="John Doe"
-                    className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
-                  />
+              <form onSubmit={handleUpdateProfile}>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">Full Name</label>
+                    <input
+                      type="text"
+                      value={profileForm.full_name || user?.name || ''}
+                      onChange={(e) => setProfileForm({ ...profileForm, full_name: e.target.value })}
+                      className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">Email Address</label>
+                    <input
+                      type="email"
+                      value={profileForm.email || user?.email || ''}
+                      onChange={(e) => setProfileForm({ ...profileForm, email: e.target.value })}
+                      className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">Phone Number</label>
+                    <input
+                      type="tel"
+                      value={profileForm.phone || user?.phone || ''}
+                      onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value })}
+                      className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">Role</label>
+                    <input
+                      type="text"
+                      value={(user?.role || 'user').charAt(0).toUpperCase() + (user?.role || 'user').slice(1)}
+                      disabled
+                      className="w-full px-4 py-3 border border-slate-300 rounded-lg bg-slate-100 text-slate-500"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Email Address</label>
-                  <input
-                    type="email"
-                    defaultValue="john.doe@minsu.edu.ph"
-                    className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Phone Number</label>
-                  <input
-                    type="tel"
-                    defaultValue="0912-345-6789"
-                    className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Role</label>
-                  <input
-                    type="text"
-                    defaultValue="Administrator"
-                    disabled
-                    className="w-full px-4 py-3 border border-slate-300 rounded-lg bg-slate-100 text-slate-500"
-                  />
-                </div>
-              </div>
 
-              <button className="px-6 py-3 bg-gradient-to-r from-cyan-600 to-teal-600 text-white rounded-lg hover:from-cyan-700 hover:to-teal-700 transition-all duration-200 flex items-center gap-2 shadow-lg hover:shadow-xl">
-                <Save className="w-5 h-5" />
-                Save Changes
-              </button>
+                <button 
+                  type="submit"
+                  disabled={loading}
+                  className="mt-6 px-6 py-3 bg-gradient-to-r from-cyan-600 to-teal-600 text-white rounded-lg hover:from-cyan-700 hover:to-teal-700 transition-all duration-200 flex items-center gap-2 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Save className="w-5 h-5" />
+                  {loading ? 'Saving...' : 'Save Changes'}
+                </button>
+              </form>
             </div>
           )}
 
@@ -444,49 +466,74 @@ const Settings = () => {
                 <p className="text-sm md:text-base text-slate-600">Manage your password and security preferences</p>
               </div>
 
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Current Password</label>
-                  <input
-                    type="password"
-                    className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">New Password</label>
-                  <input
-                    type="password"
-                    className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Confirm New Password</label>
-                  <input
-                    type="password"
-                    className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
-                  />
-                </div>
-              </div>
-
-              <div className="p-6 bg-amber-50 border border-amber-200 rounded-xl">
-                <div className="flex items-start gap-3">
-                  <Shield className="w-6 h-6 text-amber-600 flex-shrink-0 mt-0.5" />
+              {/* Current User Info */}
+              <div className="p-4 bg-slate-50 rounded-xl border border-slate-200">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-cyan-500 to-teal-600 flex items-center justify-center text-white font-bold">
+                    {(user?.name || 'User').split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                  </div>
                   <div>
-                    <h3 className="font-semibold text-amber-900 mb-1">Password Requirements</h3>
-                    <ul className="text-sm text-amber-800 space-y-1">
-                      <li>• At least 8 characters long</li>
-                      <li>• Include uppercase and lowercase letters</li>
-                      <li>• Include at least one number</li>
-                      <li>• Include at least one special character</li>
-                    </ul>
+                    <p className="font-semibold text-slate-900">{user?.name || 'User'}</p>
+                    <p className="text-sm text-slate-600">{user?.email || 'email@example.com'}</p>
                   </div>
                 </div>
               </div>
 
-              <button className="px-6 py-3 bg-gradient-to-r from-cyan-600 to-teal-600 text-white rounded-lg hover:from-cyan-700 hover:to-teal-700 transition-all duration-200 flex items-center gap-2 shadow-lg hover:shadow-xl">
-                <Lock className="w-5 h-5" />
-                Update Password
-              </button>
+              <form onSubmit={handleUpdatePassword}>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">Current Password</label>
+                    <input
+                      type="password"
+                      value={passwordForm.current_password}
+                      onChange={(e) => setPasswordForm({ ...passwordForm, current_password: e.target.value })}
+                      className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">New Password</label>
+                    <input
+                      type="password"
+                      value={passwordForm.new_password}
+                      onChange={(e) => setPasswordForm({ ...passwordForm, new_password: e.target.value })}
+                      className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">Confirm New Password</label>
+                    <input
+                      type="password"
+                      value={passwordForm.new_password_confirmation}
+                      onChange={(e) => setPasswordForm({ ...passwordForm, new_password_confirmation: e.target.value })}
+                      className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+                    />
+                  </div>
+                </div>
+
+                <div className="p-6 bg-amber-50 border border-amber-200 rounded-xl mt-4">
+                  <div className="flex items-start gap-3">
+                    <Shield className="w-6 h-6 text-amber-600 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <h3 className="font-semibold text-amber-900 mb-1">Password Requirements</h3>
+                      <ul className="text-sm text-amber-800 space-y-1">
+                        <li>• At least 8 characters long</li>
+                        <li>• Include uppercase and lowercase letters</li>
+                        <li>• Include at least one number</li>
+                        <li>• Include at least one special character</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+
+                <button 
+                  type="submit"
+                  disabled={loading}
+                  className="mt-6 px-6 py-3 bg-gradient-to-r from-cyan-600 to-teal-600 text-white rounded-lg hover:from-cyan-700 hover:to-teal-700 transition-all duration-200 flex items-center gap-2 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Lock className="w-5 h-5" />
+                  {loading ? 'Updating...' : 'Update Password'}
+                </button>
+              </form>
             </div>
           )}
 

@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 import {
   ChevronLeft,
   ChevronRight,
@@ -21,11 +22,23 @@ import {
 } from 'lucide-react';
 
 const Sidebar = () => {
+  const { user, logout } = useAuth();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showProductsSubmenu, setShowProductsSubmenu] = useState(false);
   const location = useLocation();
   const userMenuRef = useRef(null);
+
+  // Get user initials
+  const getUserInitials = () => {
+    if (!user || !user.name) return 'U';
+    return user.name
+      .split(' ')
+      .map(n => n[0])
+      .join('')
+      .slice(0, 2)
+      .toUpperCase();
+  };
 
   // Close user menu when clicking outside
   useEffect(() => {
@@ -223,15 +236,15 @@ const Sidebar = () => {
           className={`flex items-center p-3 rounded-xl bg-slate-800/50 hover:bg-slate-800 transition-all duration-200 cursor-pointer group relative ${isCollapsed ? 'justify-center' : ''}`}
         >
           <div className="w-10 h-10 rounded-full bg-gradient-to-br from-cyan-500 to-teal-600 flex items-center justify-center flex-shrink-0 shadow-lg group-hover:scale-110 transition-transform duration-200">
-            <span className="text-sm font-bold">JD</span>
+            <span className="text-sm font-bold">{getUserInitials()}</span>
           </div>
           <div
             className={`ml-3 transition-all duration-300 ${
               isCollapsed ? 'opacity-0 w-0 overflow-hidden' : 'opacity-100'
             }`}
           >
-            <p className="text-sm font-semibold text-white">John Doe</p>
-            <p className="text-xs text-slate-400">Administrator</p>
+            <p className="text-sm font-semibold text-white">{user?.name || 'User'}</p>
+            <p className="text-xs text-slate-400">{user?.role === 'admin' ? 'Administrator' : user?.role || 'User'}</p>
           </div>
           {!isCollapsed && (
             <ChevronRight className={`ml-auto w-4 h-4 text-slate-400 transition-transform duration-200 ${showUserMenu ? 'rotate-90' : ''}`} />
@@ -244,12 +257,12 @@ const Sidebar = () => {
             <div className="p-4 border-b border-slate-700">
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 rounded-full bg-gradient-to-br from-cyan-500 to-teal-600 flex items-center justify-center shadow-lg">
-                  <span className="text-base font-bold">JD</span>
+                  <span className="text-base font-bold">{getUserInitials()}</span>
                 </div>
                 {!isCollapsed && (
                   <div>
-                    <p className="text-sm font-bold text-white">John Doe</p>
-                    <p className="text-xs text-slate-400">admin@inventrck.com</p>
+                    <p className="text-sm font-bold text-white">{user?.name || 'User'}</p>
+                    <p className="text-xs text-slate-400">{user?.email || 'user@example.com'}</p>
                   </div>
                 )}
               </div>
@@ -259,17 +272,20 @@ const Sidebar = () => {
                 <User className="w-4 h-4 text-slate-400 group-hover:text-cyan-400 transition-colors" />
                 <span className="text-sm text-slate-300 group-hover:text-white">My Profile</span>
               </button>
-              <button className="w-full px-4 py-3 flex items-center gap-3 hover:bg-slate-700/50 transition-colors text-left group">
+              <Link to="/settings" className="w-full px-4 py-3 flex items-center gap-3 hover:bg-slate-700/50 transition-colors text-left group">
                 <Settings className="w-4 h-4 text-slate-400 group-hover:text-cyan-400 transition-colors" />
                 <span className="text-sm text-slate-300 group-hover:text-white">Settings</span>
-              </button>
+              </Link>
               <button className="w-full px-4 py-3 flex items-center gap-3 hover:bg-slate-700/50 transition-colors text-left group">
                 <Bell className="w-4 h-4 text-slate-400 group-hover:text-cyan-400 transition-colors" />
                 <span className="text-sm text-slate-300 group-hover:text-white">Notifications</span>
               </button>
             </div>
             <div className="border-t border-slate-700 py-2">
-              <button className="w-full px-4 py-3 flex items-center gap-3 hover:bg-rose-500/10 transition-colors text-left group">
+              <button 
+                onClick={logout}
+                className="w-full px-4 py-3 flex items-center gap-3 hover:bg-rose-500/10 transition-colors text-left group"
+              >
                 <LogOut className="w-4 h-4 text-rose-400 group-hover:text-rose-300 transition-colors" />
                 <span className="text-sm text-rose-400 group-hover:text-rose-300 font-medium">Log Out</span>
               </button>

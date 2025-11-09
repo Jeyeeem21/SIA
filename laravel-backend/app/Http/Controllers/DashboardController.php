@@ -17,7 +17,13 @@ class DashboardController extends Controller
         $lowStockItems = DB::table('inventories')
             ->join('products', 'inventories.product_id', '=', 'products.product_id')
             ->whereRaw('inventories.quantity <= inventories.reorder_level')
-            ->select('products.product_name', 'inventories.quantity', 'inventories.reorder_level')
+            ->select(
+                'inventories.inventory_id',
+                'inventories.product_id',
+                'products.product_name',
+                'inventories.quantity',
+                'inventories.reorder_level'
+            )
             ->get();
         
         // Active Orders (Pending + In Progress)
