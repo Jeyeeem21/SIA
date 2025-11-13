@@ -6,6 +6,7 @@ import AddModal from '../components/AddModal';
 import EditModal from '../components/EditModal';
 import DeleteModal from '../components/DeleteModal';
 import Pagination from '../components/Pagination';
+import PageLoadingSpinner from '../components/PageLoadingSpinner';
 import { categoriesAPI } from '../services/api';
 
 const Categories = () => {
@@ -201,10 +202,7 @@ const Categories = () => {
         {/* Mobile Card View */}
         <div className="block md:hidden p-4 space-y-4">
           {loading ? (
-            <div className="flex items-center justify-center gap-2 text-slate-500 py-12">
-              <div className="w-5 h-5 border-2 border-cyan-600 border-t-transparent rounded-full animate-spin"></div>
-              <span>Loading categories...</span>
-            </div>
+            <PageLoadingSpinner message="Loading categories..." />
           ) : paginatedCategories.length === 0 ? (
             <div className="text-center text-slate-500 py-12">No categories found</div>
           ) : (
@@ -285,14 +283,7 @@ const Categories = () => {
             </thead>
             <tbody className="divide-y divide-slate-200">
               {loading ? (
-                <tr>
-                  <td colSpan="6" className="px-6 py-12 text-center">
-                    <div className="flex items-center justify-center gap-2 text-slate-500">
-                      <div className="w-5 h-5 border-2 border-cyan-600 border-t-transparent rounded-full animate-spin"></div>
-                      <span>Loading categories...</span>
-                    </div>
-                  </td>
-                </tr>
+                <PageLoadingSpinner variant="table" colSpan={6} message="Loading categories..." />
               ) : paginatedCategories.length === 0 ? (
                 <tr>
                   <td colSpan="6" className="px-6 py-12 text-center text-slate-500">

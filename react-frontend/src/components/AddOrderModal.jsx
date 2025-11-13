@@ -1,6 +1,6 @@
 import React from 'react';
 import Modal from './Modal';
-import { Plus } from 'lucide-react';
+import { Plus, Barcode } from 'lucide-react';
 
 const AddOrderModal = ({
   isOpen,
@@ -12,7 +12,10 @@ const AddOrderModal = ({
   products,
   addItemToOrder,
   removeItemFromOrder,
-  handleSubmitOrder
+  handleSubmitOrder,
+  barcodeInputRef,
+  quantityInputRef,
+  updateOrderItemQuantity
 }) => {
   if (!isOpen) return null;
 
@@ -50,9 +53,25 @@ const AddOrderModal = ({
           </div>
         </div>
 
+        {/* Barcode Scanner Section */}
+        <div className="border-2 border-cyan-200 rounded-xl p-4 bg-cyan-50">
+          <div className="flex items-center gap-2 mb-3">
+            <Barcode className="w-5 h-5 text-cyan-600" />
+            <h3 className="text-lg font-bold text-slate-900">Barcode Scanner</h3>
+          </div>
+          <input
+            ref={barcodeInputRef}
+            type="text"
+            placeholder="Scan barcode here or type and press Enter..."
+            autoFocus
+            className="w-full px-4 py-3 border-2 border-cyan-300 rounded-xl focus:border-cyan-500 focus:outline-none text-slate-900 bg-white font-mono text-lg"
+          />
+          <p className="text-xs text-slate-600 mt-2">💡 Scanner works even while editing quantities!</p>
+        </div>
+
         {/* Add Products Section */}
         <div className="border-2 border-amber-200 rounded-xl p-4 bg-amber-50">
-          <h3 className="text-lg font-bold text-slate-900 mb-4">Add Products to Order</h3>
+          <h3 className="text-lg font-bold text-slate-900 mb-4">Add Products Manually</h3>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
             <div className="md:col-span-2">
               <label className="block text-sm font-semibold text-slate-700 mb-2">Product <span className="text-red-500">*</span></label>
@@ -75,7 +94,15 @@ const AddOrderModal = ({
 
             <div>
               <label className="block text-sm font-semibold text-slate-700 mb-2">Quantity <span className="text-red-500">*</span></label>
-              <input type="number" min="1" value={currentItem.quantity} onChange={(e) => setCurrentItem({ ...currentItem, quantity: parseInt(e.target.value) || 1 })} className="w-full px-4 py-2 border-2 border-slate-200 rounded-xl focus:border-amber-500 focus:outline-none text-slate-900 bg-white" style={{ color: '#0f172a' }} />
+              <input 
+                ref={quantityInputRef}
+                type="number" 
+                min="1" 
+                value={currentItem.quantity} 
+                onChange={(e) => setCurrentItem({ ...currentItem, quantity: parseInt(e.target.value) || 1 })} 
+                className="w-full px-4 py-2 border-2 border-slate-200 rounded-xl focus:border-amber-500 focus:outline-none text-slate-900 bg-white" 
+                style={{ color: '#0f172a' }} 
+              />
             </div>
 
             <div>
@@ -93,10 +120,19 @@ const AddOrderModal = ({
             <h3 className="text-lg font-bold text-slate-900 mb-3">Order Items</h3>
             <div className="space-y-2">
               {orderForm.order_items.map((item, index) => (
-                <div key={index} className="flex items-center justify-between bg-slate-50 p-3 rounded-lg">
+                <div key={index} className="flex items-center justify-between bg-slate-50 p-3 rounded-lg gap-3">
                   <div className="flex-1">
                     <p className="font-semibold text-slate-900">{item.product_name}</p>
-                    <p className="text-sm text-slate-600">{item.quantity} × ₱{item.unit_price.toLocaleString()} = ₱{(item.quantity * item.unit_price).toLocaleString()}</p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <input
+                        type="number"
+                        min="1"
+                        value={item.quantity}
+                        onChange={(e) => updateOrderItemQuantity(index, parseInt(e.target.value) || 1)}
+                        className="w-16 px-2 py-1 border-2 border-slate-300 rounded-lg focus:border-amber-500 focus:outline-none text-slate-900 bg-white text-sm font-semibold text-center"
+                      />
+                      <span className="text-sm text-slate-600">× ₱{item.unit_price.toLocaleString()} = ₱{(item.quantity * item.unit_price).toLocaleString()}</span>
+                    </div>
                   </div>
                   <button onClick={() => removeItemFromOrder(index)} className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg transition-all">Remove</button>
                 </div>

@@ -452,7 +452,7 @@ const Settings = () => {
                   className="mt-6 px-6 py-3 bg-gradient-to-r from-cyan-600 to-teal-600 text-white rounded-lg hover:from-cyan-700 hover:to-teal-700 transition-all duration-200 flex items-center gap-2 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Save className="w-5 h-5" />
-                  {loading ? 'Saving...' : 'Save Changes'}
+                  Save Changes
                 </button>
               </form>
             </div>
@@ -531,7 +531,7 @@ const Settings = () => {
                   className="mt-6 px-6 py-3 bg-gradient-to-r from-cyan-600 to-teal-600 text-white rounded-lg hover:from-cyan-700 hover:to-teal-700 transition-all duration-200 flex items-center gap-2 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Lock className="w-5 h-5" />
-                  {loading ? 'Updating...' : 'Update Password'}
+                  Update Password
                 </button>
               </form>
             </div>
@@ -800,7 +800,7 @@ const Settings = () => {
                   className="px-6 py-3 bg-gradient-to-r from-cyan-600 to-teal-600 text-white rounded-lg hover:from-cyan-700 hover:to-teal-700 transition-all duration-200 flex items-center gap-2 disabled:opacity-50"
                 >
                   <Plus className="w-5 h-5" />
-                  {loading ? 'Adding...' : 'Add User'}
+                  Add User
                 </button>
               </div>
             </form>
@@ -915,7 +915,7 @@ const Settings = () => {
                   className="px-6 py-3 bg-gradient-to-r from-cyan-600 to-teal-600 text-white rounded-lg hover:from-cyan-700 hover:to-teal-700 transition-all duration-200 flex items-center gap-2 disabled:opacity-50"
                 >
                   <Check className="w-5 h-5" />
-                  {loading ? 'Updating...' : 'Update User'}
+                  Update User
                 </button>
               </div>
             </form>
@@ -957,7 +957,7 @@ const Settings = () => {
                   className="px-6 py-3 bg-gradient-to-r from-rose-600 to-red-600 text-white rounded-lg hover:from-rose-700 hover:to-red-700 transition-all duration-200 flex items-center gap-2 disabled:opacity-50"
                 >
                   <Trash2 className="w-5 h-5" />
-                  {loading ? 'Deleting...' : 'Delete User'}
+                  Delete User
                 </button>
               </div>
             </div>
@@ -1016,7 +1016,7 @@ const Settings = () => {
                   className="px-6 py-3 bg-gradient-to-r from-amber-600 to-orange-600 text-white rounded-lg hover:from-amber-700 hover:to-orange-700 transition-all duration-200 flex items-center gap-2 disabled:opacity-50"
                 >
                   <Key className="w-5 h-5" />
-                  {loading ? 'Resetting...' : 'Reset Password'}
+                  Reset Password
                 </button>
               </div>
             </div>

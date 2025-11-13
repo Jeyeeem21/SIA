@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Validation\Rule;
 use App\Models\StaffInfo;
 use App\Models\User;
@@ -14,7 +15,9 @@ class StaffController extends Controller
     // Get all staff with their info
     public function index()
     {
-        $staff = StaffInfo::with('user')->orderBy('created_at', 'desc')->get();
+        $staff = Cache::remember('staff_all', 1, function () {
+            return StaffInfo::with('user')->orderBy('created_at', 'desc')->get();
+        });
         
         return response()->json([
             'staff' => $staff
@@ -134,7 +137,19 @@ class StaffController extends Controller
             ], 422);
         }
 
-        $staffInfo->update($request->all());
+        // Only update specific validated fields (avoid updating extra fields from frontend)
+        $staffInfo->update($request->only([
+            'full_name',
+            'email',
+            'phone',
+            'address',
+            'date_of_birth',
+            'gender',
+            'position',
+            'department',
+            'hire_date',
+            'status',
+        ]));
 
         // If user account exists, update user info too
         if ($staffInfo->user_id) {

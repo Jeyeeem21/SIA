@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Search, Plus, Edit, Trash2, Package, DollarSign, Tag, TrendingUp, Eye, Scan } from 'lucide-react';
 import toast from 'react-hot-toast';
 import useBarcodeScanner from '../hooks/useBarcodeScanner';
@@ -7,14 +7,15 @@ import AddModal from '../components/AddModal';
 import EditModal from '../components/EditModal';
 import DeleteModal from '../components/DeleteModal';
 import Pagination from '../components/Pagination';
-import { productsAPI, categoriesAPI } from '../services/api';
+import { TableSkeleton, LoadingBar } from '../components/LoadingStates';
+import { useProducts, useCreateProduct, useUpdateProduct, useDeleteProduct } from '../hooks/useProducts';
+import { useCategories } from '../hooks/useCategories';
 
 const Products = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCategory, setFilterCategory] = useState('all');
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
-  const [loading, setLoading] = useState(false);
   const [scannedBarcode, setScannedBarcode] = useState('');
   
   // Modal states
@@ -23,9 +24,12 @@ const Products = () => {
   const [editModal, setEditModal] = useState({ isOpen: false, data: null });
   const [deleteModal, setDeleteModal] = useState({ isOpen: false, id: null, name: '' });
 
-  // Products and categories from API
-  const [products, setProducts] = useState([]);
-  const [categories, setCategories] = useState([]);
+  // React Query hooks - REALTIME, no repeated loading
+  const { data: products = [], isLoading } = useProducts();
+  const { data: categories = [] } = useCategories();
+  const createMutation = useCreateProduct();
+  const updateMutation = useUpdateProduct();
+  const deleteMutation = useDeleteProduct();
 
   // Barcode Scanner Handler - Must be defined before hook
   const handleBarcodeScan = async (barcode) => {
@@ -58,33 +62,7 @@ const Products = () => {
   // Barcode Scanner Hook - Always active
   useBarcodeScanner(handleBarcodeScan, true, 3);
 
-  // Fetch products and categories from API
-  useEffect(() => {
-    fetchProducts();
-    fetchCategories();
-  }, []);
 
-  const fetchProducts = async () => {
-    try {
-      setLoading(true);
-      const response = await productsAPI.getAll();
-      setProducts(response.data);
-    } catch (error) {
-      toast.error('Failed to fetch products');
-      console.error('Error fetching products:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchCategories = async () => {
-    try {
-      const response = await categoriesAPI.getAll();
-      setCategories(response.data);
-    } catch (error) {
-      console.error('Error fetching categories:', error);
-    }
-  };
 
   const stats = [
     { label: 'Total Products', value: products.length, icon: Package, color: 'bg-gradient-to-br from-cyan-500 to-cyan-600' },
@@ -108,8 +86,6 @@ const Products = () => {
     { key: 'category_id', label: 'Category', type: 'select', required: true, 
       options: categoryOptions
     },
-    { key: 'price', label: 'Selling Price (₱)', type: 'number', required: true, placeholder: '0.00' },
-    { key: 'cost', label: 'Cost Price (₱)', type: 'number', required: false, placeholder: '0.00' },
     { key: 'unit', label: 'Unit', type: 'select', required: true,
       options: [
         { value: 'piece', label: 'Piece' },
@@ -119,6 +95,8 @@ const Products = () => {
         { value: 'pack', label: 'Pack' }
       ]
     },
+    { key: 'price', label: 'Selling Price (₱)', type: 'number', required: true, placeholder: '0.00', step: '0.01' },
+    { key: 'cost', label: 'Cost Price (₱)', type: 'number', required: false, placeholder: '0.00', step: '0.01' },
     { key: 'expiration_date', label: 'Expiration Date', type: 'date', required: false, placeholder: 'Select expiration date' },
     { key: 'status', label: 'Status', type: 'select', required: true,
       options: [
@@ -126,10 +104,12 @@ const Products = () => {
         { value: 'inactive', label: 'Inactive' }
       ]
     },
+    { key: 'product_image', label: 'Product Image', type: 'file', required: false, accept: 'image/*', placeholder: 'Upload product image', fullWidth: true },
     { key: 'description', label: 'Description', type: 'textarea', fullWidth: true, rows: 3, placeholder: 'Product description...' }
   ];
 
   const viewFields = [
+    { key: 'product_image', label: 'Product Image', type: 'file' },
     { key: 'product_name', label: 'Product Name' },
     { key: 'barcode', label: 'Barcode', render: (value) => value || 'N/A' },
     { key: 'category', label: 'Category', render: (value) => value?.category_name || 'N/A' },
@@ -149,40 +129,51 @@ const Products = () => {
   };
 
   const handleAdd = async (formData) => {
-    try {
-      await productsAPI.create(formData);
-      await fetchProducts();
-      toast.success('Product added successfully!');
-    } catch (error) {
-      toast.error(error.response?.data?.message || 'Failed to add product');
-      console.error('Error adding product:', error);
-    }
+    // INSTANT: Close modal immediately
+    setAddModal(false);
+    setScannedBarcode('');
+    
+    // Ensure category_id is an integer
+    const productData = {
+      ...formData,
+      category_id: parseInt(formData.category_id),
+      price: parseFloat(formData.price),
+      cost: formData.cost ? parseFloat(formData.cost) : null
+    };
+    
+    // Mutation will show instant success toast
+    createMutation.mutate(productData);
   };
 
   const handleEdit = async (formData) => {
-    try {
-      await productsAPI.update(formData.product_id, formData);
-      await fetchProducts();
-      toast.success('Product updated successfully!');
-    } catch (error) {
-      toast.error(error.response?.data?.message || 'Failed to update product');
-      console.error('Error updating product:', error);
-    }
+    // INSTANT: Close modal immediately
+    setEditModal({ isOpen: false, data: null });
+    
+    // Ensure category_id is an integer
+    const productData = {
+      ...formData,
+      category_id: parseInt(formData.category_id),
+      price: parseFloat(formData.price),
+      cost: formData.cost ? parseFloat(formData.cost) : null
+    };
+    
+    // Mutation will show instant success toast
+    updateMutation.mutate({ id: formData.product_id, data: productData });
   };
 
   const handleDelete = async () => {
-    try {
-      await productsAPI.delete(deleteModal.id);
-      await fetchProducts();
-      toast.success('Product deleted successfully!');
-    } catch (error) {
-      toast.error(error.response?.data?.message || 'Failed to delete product');
-      console.error('Error deleting product:', error);
-    }
+    const productId = deleteModal.id;
+    setDeleteModal({ isOpen: false, id: null, name: '' }); // Close modal immediately
+    deleteMutation.mutate(productId);
   };
 
   const openEditModal = (product) => {
-    setEditModal({ isOpen: true, data: product });
+    // Prepare data for edit modal - ensure category_id is at root level
+    const editData = {
+      ...product,
+      category_id: product.category_id || product.category?.category_id
+    };
+    setEditModal({ isOpen: true, data: editData });
   };
 
   const openDeleteModal = (product) => {
@@ -297,14 +288,11 @@ const Products = () => {
 
       {/* Products Table */}
       <div className="bg-white rounded-xl shadow-md overflow-hidden">
-        {/* Mobile Card View */}
+        {/* NO LOADING BAR - Instant updates with optimistic UI */}
+        
+        {/* Mobile Card View - NO LOADING STATE, instant from cache */}
         <div className="block md:hidden p-4 space-y-4">
-          {loading ? (
-            <div className="flex items-center justify-center gap-2 text-slate-500 py-12">
-              <div className="w-5 h-5 border-2 border-cyan-600 border-t-transparent rounded-full animate-spin"></div>
-              <span>Loading products...</span>
-            </div>
-          ) : paginatedProducts.length === 0 ? (
+          {paginatedProducts.length === 0 ? (
             <div className="text-center text-slate-500 py-12">No products found</div>
           ) : (
             paginatedProducts.map((product) => (
@@ -398,15 +386,8 @@ const Products = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
-              {loading ? (
-                <tr>
-                  <td colSpan="8" className="px-6 py-12 text-center">
-                    <div className="flex items-center justify-center gap-2 text-slate-500">
-                      <div className="w-5 h-5 border-2 border-cyan-600 border-t-transparent rounded-full animate-spin"></div>
-                      <span>Loading products...</span>
-                    </div>
-                  </td>
-                </tr>
+              {isLoading ? (
+                <TableSkeleton rows={5} columns={8} />
               ) : paginatedProducts.length === 0 ? (
                 <tr>
                   <td colSpan="8" className="px-6 py-12 text-center text-slate-500">

@@ -2,13 +2,14 @@ import { useState, useEffect, useRef } from 'react';
 import { Users, Plus, Edit, Trash2, Key, X, Search, UserCheck, UserX, Mail, Phone, Shield, MapPin, Calendar, Briefcase } from 'lucide-react';
 import { staffAPI } from '../services/api';
 import toast from 'react-hot-toast';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Pagination from '../components/Pagination';
 import Modal from '../components/Modal';
 import ConfirmModal from '../components/ConfirmModal';
+import PageLoadingSpinner from '../components/PageLoadingSpinner';
 
 const Staff = () => {
-  const [staff, setStaff] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState('');
   
   // Pagination state
@@ -62,38 +63,27 @@ const Staff = () => {
   // Debounce timer
   const emailDebounceTimer = useRef(null);
 
-  // Fetch staff on mount
+  // React Query - Fetch staff with real-time updates (uses global 5-second refetch)
+  const { data: staffData, isLoading: loading, isError } = useQuery({
+    queryKey: ['staff'],
+    queryFn: async () => {
+      const response = await staffAPI.getAll();
+      return response.data?.staff || response.data || response.staff || [];
+    },
+    // Uses global config: refetchInterval: 5000
+  });
+  
+  // Ensure staff is always an array
+  const staff = Array.isArray(staffData) ? staffData : [];
+
+  // Cleanup debounce timer on unmount
   useEffect(() => {
-    fetchStaff();
-    
-    // Cleanup debounce timer on unmount
     return () => {
       if (emailDebounceTimer.current) {
         clearTimeout(emailDebounceTimer.current);
       }
     };
   }, []);
-
-  const fetchStaff = async () => {
-    try {
-      setLoading(true);
-      const response = await staffAPI.getAll();
-      console.log('Staff API Full Response:', response);
-      console.log('Response.data:', response.data);
-      console.log('Response.data.staff:', response.data?.staff);
-      
-      // Axios wraps response in data property
-      const staffData = response.data?.staff || response.staff || [];
-      console.log('Setting staff data:', staffData);
-      setStaff(staffData);
-    } catch (error) {
-      console.error('Error fetching staff:', error);
-      toast.error('Failed to fetch staff');
-      setStaff([]);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   // Email validation with debounce
   const validateEmail = (email, userId = null) => {
@@ -235,14 +225,18 @@ const Staff = () => {
       return;
     }
 
+    // Close modal immediately
+    const staffId = tempStaffInfo.id;
+    const password = accountForm.password;
+    setShowStepTwoModal(false);
+    setTempStaffInfo(null);
+    resetStaffInfoForm();
+    resetAccountForm();
+    
     try {
-      await staffAPI.createStaffAccount(tempStaffInfo.id, { password: accountForm.password });
+      await staffAPI.createStaffAccount(staffId, { password });
       toast.success('Staff account created successfully!');
-      setShowStepTwoModal(false);
-      setTempStaffInfo(null);
-      resetStaffInfoForm();
-      resetAccountForm();
-      fetchStaff();
+      queryClient.invalidateQueries({ queryKey: ['staff'] });
     } catch (error) {
       console.error('Error creating account:', error);
       toast.error(error.response?.data?.message || 'Failed to create account');
@@ -269,12 +263,16 @@ const Staff = () => {
       return;
     }
 
+    // Close modal immediately
+    const staffId = selectedStaff.id;
+    const formData = { ...editForm };
+    setShowEditModal(false);
+    setSelectedStaff(null);
+    
     try {
-      await staffAPI.updateStaffInfo(selectedStaff.id, editForm);
+      await staffAPI.updateStaffInfo(staffId, formData);
       toast.success('Staff information updated successfully');
-      setShowEditModal(false);
-      setSelectedStaff(null);
-      fetchStaff();
+      queryClient.invalidateQueries({ queryKey: ['staff'] });
     } catch (error) {
       console.error('Error updating staff:', error);
       toast.error(error.response?.data?.message || 'Failed to update staff information');
@@ -283,12 +281,15 @@ const Staff = () => {
 
   // Handle delete staff
   const handleDeleteStaff = async () => {
+    // Close modal immediately
+    const staffId = selectedStaff.id;
+    setShowDeleteModal(false);
+    setSelectedStaff(null);
+    
     try {
-      await staffAPI.deleteStaff(selectedStaff.id);
+      await staffAPI.deleteStaff(staffId);
       toast.success('Staff member deleted successfully');
-      setShowDeleteModal(false);
-      setSelectedStaff(null);
-      fetchStaff();
+      queryClient.invalidateQueries({ queryKey: ['staff'] });
     } catch (error) {
       console.error('Error deleting staff:', error);
       toast.error(error.response?.data?.message || 'Failed to delete staff member');
@@ -304,12 +305,16 @@ const Staff = () => {
       return;
     }
 
+    // Close modal immediately
+    const userId = selectedStaff.user_id;
+    const password = resetPassword;
+    setShowResetPasswordModal(false);
+    setSelectedStaff(null);
+    setResetPassword('');
+    
     try {
-      await staffAPI.resetPassword(selectedStaff.user_id, resetPassword);
+      await staffAPI.resetPassword(userId, password);
       toast.success('Password reset successfully');
-      setShowResetPasswordModal(false);
-      setSelectedStaff(null);
-      setResetPassword('');
     } catch (error) {
       console.error('Error resetting password:', error);
       toast.error(error.response?.data?.message || 'Failed to reset password');
@@ -449,10 +454,8 @@ const Staff = () => {
 
       {/* Staff Table/Cards */}
       <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
-        {loading ? (
-          <div className="flex items-center justify-center py-20">
-            <div className="animate-spin rounded-full h-12 w-12 border-4 border-rose-500 border-t-transparent"></div>
-          </div>
+        {loading && staff.length === 0 ? (
+          <PageLoadingSpinner message="Loading staff..." />
         ) : filteredStaff.length === 0 ? (
           <div className="text-center py-20">
             <Users className="w-16 h-16 text-slate-300 mx-auto mb-4" />

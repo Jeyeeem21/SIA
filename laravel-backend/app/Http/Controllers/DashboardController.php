@@ -4,19 +4,49 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
 use Carbon\Carbon;
 
 class DashboardController extends Controller
 {
     public function index()
     {
-        // Total Products
+        // Cache for 1 second - ULTRA FAST! Multiple users share same cached data
+        // Refreshes every 1 second for real-time updates without hammering database
+        return Cache::remember('dashboard_realtime', 1, function () {
+            return $this->getDashboardData();
+        });
+    }
+
+    private function getDashboardData()
+    {
+        // Total Products (active only)
         $totalProducts = DB::table('products')->where('status', 'active')->count();
         
-        // Low Stock Items (quantity <= reorder_level)
+        // Inventory Statistics
+        $availableCount = DB::table('inventories')
+            ->join('products', 'inventories.product_id', '=', 'products.product_id')
+            ->where('products.status', 'active')
+            ->where('inventories.quantity', '>', DB::raw('inventories.reorder_level'))
+            ->count();
+            
+        $lowStockCount = DB::table('inventories')
+            ->join('products', 'inventories.product_id', '=', 'products.product_id')
+            ->where('products.status', 'active')
+            ->whereRaw('inventories.quantity > 0 AND inventories.quantity <= inventories.reorder_level')
+            ->count();
+            
+        $outOfStockCount = DB::table('inventories')
+            ->join('products', 'inventories.product_id', '=', 'products.product_id')
+            ->where('products.status', 'active')
+            ->where('inventories.quantity', '=', 0)
+            ->count();
+        
+        // Low Stock Items (quantity <= reorder_level AND quantity > 0)
         $lowStockItems = DB::table('inventories')
             ->join('products', 'inventories.product_id', '=', 'products.product_id')
-            ->whereRaw('inventories.quantity <= inventories.reorder_level')
+            ->where('products.status', 'active')
+            ->whereRaw('inventories.quantity > 0 AND inventories.quantity <= inventories.reorder_level')
             ->select(
                 'inventories.inventory_id',
                 'inventories.product_id',
@@ -165,7 +195,9 @@ class DashboardController extends Controller
         return response()->json([
             'stats' => [
                 'total_products' => $totalProducts,
-                'low_stock_count' => $lowStockItems->count(),
+                'available_count' => $availableCount,
+                'low_stock_count' => $lowStockCount,
+                'out_of_stock_count' => $outOfStockCount,
                 'active_orders' => $activeOrders,
                 'today_revenue' => (float) $todayRevenue,
                 'total_revenue' => (float) $totalRevenue,

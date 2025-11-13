@@ -9,6 +9,7 @@ use App\Models\RentalContract;
 use App\Models\RentalPayment;
 use App\Models\RentalMaintenance;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 
 class RentalsController extends Controller
@@ -28,6 +29,7 @@ class RentalsController extends Controller
             return [
                 'id' => $property->id,
                 'name' => $property->name,
+                'stall_number' => $property->stall_number,
                 'type' => $property->type,
                 'location' => $property->location,
                 'size' => $property->size,
@@ -45,15 +47,19 @@ class RentalsController extends Controller
     {
         $request->validate([
             'name' => 'required|string|max:255',
+            'stall_number' => 'nullable|string|max:50|unique:rental_properties,stall_number',
             'type' => 'required|in:Commercial,Residential',
             'location' => 'required|string|max:255',
             'size' => 'required|string|max:255',
             'monthly_rate' => 'required|numeric|min:0',
             'status' => 'required|in:Occupied,Vacant,Under Maintenance',
+        ], [
+            'stall_number.unique' => 'This stall number is already taken. Please use a different stall number.',
         ]);
 
         $property = RentalProperty::create([
             'name' => $request->name,
+            'stall_number' => $request->stall_number,
             'type' => $request->type,
             'location' => $request->location,
             'size' => $request->size,
@@ -68,15 +74,19 @@ class RentalsController extends Controller
     {
         $request->validate([
             'name' => 'required|string|max:255',
+            'stall_number' => 'nullable|string|max:50|unique:rental_properties,stall_number,' . $property->id,
             'type' => 'required|in:Commercial,Residential',
             'location' => 'required|string|max:255',
             'size' => 'required|string|max:255',
             'monthly_rate' => 'required|numeric|min:0',
             'status' => 'required|in:Occupied,Vacant,Under Maintenance',
+        ], [
+            'stall_number.unique' => 'This stall number is already taken. Please use a different stall number.',
         ]);
 
         $property->update([
             'name' => $request->name,
+            'stall_number' => $request->stall_number,
             'type' => $request->type,
             'location' => $request->location,
             'size' => $request->size,
@@ -134,7 +144,15 @@ class RentalsController extends Controller
             'deposit_paid' => 'required|numeric|min:0',
         ]);
 
-        $tenant = RentalTenant::create($request->all());
+        $tenant = RentalTenant::create($request->only([
+            'name',
+            'business_name',
+            'contact_number',
+            'email',
+            'property_rented_id',
+            'contract_status',
+            'deposit_paid',
+        ]));
         return response()->json($tenant, 201);
     }
 
@@ -150,7 +168,15 @@ class RentalsController extends Controller
             'deposit_paid' => 'required|numeric|min:0',
         ]);
 
-        $tenant->update($request->all());
+        $tenant->update($request->only([
+            'name',
+            'business_name',
+            'contact_number',
+            'email',
+            'property_rented_id',
+            'contract_status',
+            'deposit_paid',
+        ]));
         return response()->json($tenant);
     }
 
@@ -218,7 +244,16 @@ class RentalsController extends Controller
         // Allow tenants to rent multiple properties (remove this check)
         // A tenant can rent multiple properties at the same time
 
-        $contract = RentalContract::create($request->all());
+        $contract = RentalContract::create($request->only([
+            'contract_number',
+            'property_id',
+            'tenant_id',
+            'start_date',
+            'end_date',
+            'monthly_rent',
+            'deposit',
+            'status',
+        ]));
         return response()->json($contract, 201);
     }
 
@@ -235,7 +270,16 @@ class RentalsController extends Controller
             'status' => 'required|in:Active,Expired,Terminated',
         ]);
 
-        $contract->update($request->all());
+        $contract->update($request->only([
+            'contract_number',
+            'property_id',
+            'tenant_id',
+            'start_date',
+            'end_date',
+            'monthly_rent',
+            'deposit',
+            'status',
+        ]));
         return response()->json($contract);
     }
 
@@ -286,10 +330,16 @@ class RentalsController extends Controller
         $nextNumber = $lastPayment ? intval(substr($lastPayment->payment_number, 4)) + 1 : 1;
         $paymentNumber = 'PAY-' . str_pad($nextNumber, 6, '0', STR_PAD_LEFT);
 
-        $paymentData = $request->all();
-        $paymentData['payment_number'] = $paymentNumber;
-
-        $payment = RentalPayment::create($paymentData);
+        $payment = RentalPayment::create([
+            'payment_number' => $paymentNumber,
+            'tenant_id' => $request->tenant_id,
+            'property_id' => $request->property_id,
+            'amount' => $request->amount,
+            'payment_date' => $request->payment_date,
+            'month' => $request->month,
+            'method' => $request->input('method'),
+            'status' => $request->status,
+        ]);
         return response()->json($payment, 201);
     }
 
@@ -357,10 +407,16 @@ class RentalsController extends Controller
         $nextNumber = $lastMaintenance ? intval(substr($lastMaintenance->request_number, 4)) + 1 : 1;
         $requestNumber = 'REQ-' . str_pad($nextNumber, 6, '0', STR_PAD_LEFT);
 
-        $maintenanceData = $request->all();
-        $maintenanceData['request_number'] = $requestNumber;
-
-        $maintenance = RentalMaintenance::create($maintenanceData);
+        $maintenance = RentalMaintenance::create([
+            'request_number' => $requestNumber,
+            'property_id' => $request->property_id,
+            'tenant_id' => $request->tenant_id,
+            'issue' => $request->issue,
+            'priority' => $request->priority,
+            'status' => $request->status,
+            'date_reported' => $request->date_reported,
+            'assigned_to' => $request->assigned_to,
+        ]);
         return response()->json($maintenance, 201);
     }
 
@@ -391,18 +447,33 @@ class RentalsController extends Controller
 
     public function getStats()
     {
-        $stats = [
-            'totalProperties' => RentalProperty::count(),
-            'occupiedProperties' => RentalProperty::where('status', 'Occupied')->count(),
-            'totalTenants' => RentalTenant::count(),
-            'activeContracts' => RentalContract::where('status', 'Active')->count(),
-            'pendingPayments' => RentalPayment::where('status', 'Pending')->count(),
-            'maintenanceRequests' => RentalMaintenance::where('status', '!=', 'Completed')->count(),
-            'monthlyRevenue' => RentalPayment::where('status', 'Paid')
-                ->whereMonth('payment_date', now()->month)
-                ->whereYear('payment_date', now()->year)
-                ->sum('amount'),
-        ];
+        $stats = Cache::remember('rental_stats', 1, function () {
+            $totalProperties = RentalProperty::count();
+            $occupiedProperties = RentalProperty::where('status', 'Occupied')->count();
+            $vacantProperties = RentalProperty::where('status', 'Vacant')->count();
+            
+            // Calculate expiring contracts (within 60 days)
+            $expiringContracts = RentalContract::where('status', 'Active')
+                ->where('end_date', '<=', now()->addDays(60))
+                ->where('end_date', '>=', now())
+                ->count();
+            
+            // Calculate monthly revenue from occupied properties
+            $monthlyRevenue = RentalProperty::where('status', 'Occupied')
+                ->sum('monthly_rate');
+            
+            return [
+                'total_properties' => $totalProperties,
+                'occupied_properties' => $occupiedProperties,
+                'vacant_properties' => $vacantProperties,
+                'total_tenants' => RentalTenant::count(),
+                'active_contracts' => RentalContract::where('status', 'Active')->count(),
+                'pending_payments' => RentalPayment::where('status', 'Pending')->count(),
+                'pending_maintenance' => RentalMaintenance::where('status', 'Pending')->count(),
+                'monthly_revenue' => $monthlyRevenue,
+                'expiring_contracts' => $expiringContracts,
+            ];
+        });
 
         return response()->json($stats);
     }

@@ -4,21 +4,30 @@ namespace App\Http\Controllers;
 
 use App\Models\Inventory;
 use App\Models\Product;
+use App\Models\ProductTransaction;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Carbon\Carbon;
 
 class InventoryController extends Controller
 {
     /**
-     * Display a listing of the resource.
+     * Display a listing of the resource - OPTIMIZED with 1-second cache
      */
     public function index()
     {
-        $inventories = Inventory::with('product.category')
-            ->orderBy('updated_at', 'desc')
-            ->get();
-        
-        return response()->json($inventories);
+        return Cache::remember('inventories_all', 1, function () {
+            $inventories = Inventory::select('inventory_id', 'product_id', 'quantity', 'reorder_level', 'reorder_quantity', 'last_restock_date', 'updated_at')
+                ->with([
+                    'product:product_id,product_name,price,status,category_id',
+                    'product.category:category_id,category_name'
+                ])
+                ->orderBy('updated_at', 'desc')
+                ->get();
+            
+            return response()->json($inventories);
+        });
     }
 
     /**
@@ -73,10 +82,30 @@ class InventoryController extends Controller
             'quantity' => 'required|integer|min:1',
         ]);
 
+        // Get product price for transaction
+        $product = $inventory->product;
+        $unitPrice = $product->price ?? 0;
+
         $inventory->quantity += $validated['quantity'];
         $inventory->last_restock_date = Carbon::now()->format('Y-m-d');
         $inventory->last_restock_quantity = $validated['quantity'];
         $inventory->save();
+
+        // Create product transaction for IN movement
+        ProductTransaction::create([
+            'product_id' => $inventory->product_id,
+            'type' => 'IN',
+            'quantity' => $validated['quantity'],
+            'unit_price' => $unitPrice,
+            'total_amount' => $validated['quantity'] * $unitPrice,
+            'reference_type' => 'restock',
+            'reference_id' => $inventory->inventory_id,
+            'user_id' => Auth::id(),
+            'notes' => 'Restock - Added ' . $validated['quantity'] . ' units',
+        ]);
+
+        // Clear dashboard cache when inventory is restocked
+        Cache::forget('dashboard_data');
 
         return response()->json([
             'message' => 'Inventory restocked successfully',

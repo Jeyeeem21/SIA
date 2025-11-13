@@ -1,4 +1,7 @@
 import { useState, useEffect } from 'react';
+import toast from 'react-hot-toast';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import {
   BarChart,
   Bar,
@@ -29,13 +32,15 @@ import {
   Clock
 } from 'lucide-react';
 import { reportsAPI } from '../services/api';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '../lib/queryClient';
 import Pagination from '../components/Pagination';
+import PageLoadingSpinner from '../components/PageLoadingSpinner';
 
 const Reports = () => {
+  const queryClient = useQueryClient();
+  
   // State management
-  const [loading, setLoading] = useState(true);
-  const [tableLoading, setTableLoading] = useState(false);
-  const [reportData, setReportData] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState('date');
   const [sortOrder, setSortOrder] = useState('desc');
@@ -54,78 +59,349 @@ const Reports = () => {
   // Colors for pie chart (top 5 only)
   const COLORS = ['#06b6d4', '#8b5cf6', '#f59e0b', '#14b8a6', '#f43f5e'];
 
-  // Fetch initial data (charts, inventory cards) - only on mount
-  const fetchInitialData = async () => {
-    try {
-      setLoading(true);
+  // React Query - Fetch reports data from cache, invalidate on order changes
+  const { data: reportData, isLoading: loading } = useQuery({
+    queryKey: queryKeys.reports({ start_date: startDate, end_date: endDate }),
+    queryFn: async () => {
       const response = await reportsAPI.getReports({
         start_date: startDate,
         end_date: endDate,
       });
-      setReportData(response.data);
-    } catch (error) {
-      console.error('Error fetching reports:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+      return response.data;
+    },
+    staleTime: 1000 * 60, // 1 minute cache - reports change less frequently
+    refetchInterval: false, // NO auto refetch - invalidate on order changes instead
+    refetchOnWindowFocus: false, // Use cache
+    refetchOnMount: false, // Use cache
+    refetchIntervalInBackground: false,
+  });
 
-  // Fetch only transaction table data - for date filter changes
-  const fetchTransactions = async () => {
-    try {
-      setTableLoading(true);
-      const response = await reportsAPI.getReports({
-        start_date: startDate,
-        end_date: endDate,
-      });
-      // Only update transactions, keep charts/inventory data
-      setReportData(prev => ({
-        ...prev,
-        transactions: response.data.transactions
-      }));
-    } catch (error) {
-      console.error('Error fetching transactions:', error);
-    } finally {
-      setTableLoading(false);
-    }
-  };
-
-  // Fetch all data on mount
+  // Listen to order changes and invalidate reports
   useEffect(() => {
-    fetchInitialData();
-  }, []);
+    const unsubscribe = queryClient.getQueryCache().subscribe((event) => {
+      if (event?.query?.queryKey?.[0] === 'orders') {
+        // When orders change, refresh reports immediately
+        queryClient.invalidateQueries({ queryKey: queryKeys.reports });
+      }
+    });
+    
+    return () => unsubscribe();
+  }, [queryClient]);
+
+  // Calculate totals for export
+  const calculateExportTotals = (transactions) => {
+    const productTotals = {};
+    let grandTotal = 0;
+
+    transactions.forEach(t => {
+      grandTotal += parseFloat(t.total_amount);
+      t.items.forEach(item => {
+        if (!productTotals[item.product_name]) {
+          productTotals[item.product_name] = 0;
+        }
+        productTotals[item.product_name] += item.quantity;
+      });
+    });
+
+    return { productTotals, grandTotal };
+  };
 
   // Handle export functions
   const handleExport = (type) => {
     const transactions = getTransactionsByTab();
+    const { productTotals, grandTotal } = calculateExportTotals(transactions);
     
     if (type === 'print') {
-      window.print();
+      // Create printable content with proper table structure
+      const printContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <title>Reports - ${activeTab}</title>
+          <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body { font-family: Arial, sans-serif; padding: 15mm; font-size: 10pt; }
+            h1 { color: #0891b2; border-bottom: 2px solid #0891b2; padding-bottom: 8px; margin-bottom: 10px; font-size: 18pt; }
+            .summary { margin-bottom: 15px; font-size: 9pt; }
+            table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+            th, td { border: 1px solid #333; padding: 6px 4px; text-align: left; vertical-align: top; font-size: 8pt; }
+            th { background-color: #0891b2; color: white; font-weight: bold; }
+            tr:nth-child(even) { background-color: #f5f5f5; }
+            .product-item { margin: 2px 0; line-height: 1.3; }
+            .totals-section { margin-top: 20px; padding: 10px; background-color: #f0f9ff; border: 2px solid #0891b2; page-break-inside: avoid; }
+            .totals-section h3 { color: #0891b2; margin-bottom: 8px; font-size: 11pt; }
+            .totals-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 10px; }
+            .total-item { padding: 4px; background: white; border: 1px solid #0891b2; font-size: 8pt; }
+            .grand-total { padding: 8px; background-color: #0891b2; color: white; font-size: 12pt; font-weight: bold; text-align: center; }
+            @page { size: landscape; margin: 10mm; }
+            @media print {
+              body { padding: 5mm; }
+            }
+          </style>
+        </head>
+        <body>
+          <h1>Transaction Report - ${activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}</h1>
+          <div class="summary">
+            <strong>Date Range:</strong> ${startDate} to ${endDate} &nbsp;|&nbsp; 
+            <strong>Total Transactions:</strong> ${transactions.length}
+          </div>
+          
+          <table>
+            <thead>
+              <tr>
+                <th style="width: 8%;">Order #</th>
+                <th style="width: 7%;">Date</th>
+                <th style="width: 6%;">Time</th>
+                <th style="width: 10%;">Customer</th>
+                <th style="width: 35%;">Products</th>
+                <th style="width: 10%;">Category</th>
+                <th style="width: 8%;">Amount</th>
+                <th style="width: 8%;">Payment</th>
+                <th style="width: 8%;">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${transactions.map(t => `
+                <tr>
+                  <td>${t.order_number}</td>
+                  <td>${t.date}</td>
+                  <td>${t.time}</td>
+                  <td>${t.customer_name || 'Walk-in'}</td>
+                  <td>
+                    ${t.items.map((item, idx) => 
+                      `<div class="product-item">${idx + 1}. ${item.product_name} (x${item.quantity}) - ₱${(item.quantity * item.unit_price).toFixed(2)}</div>`
+                    ).join('')}
+                  </td>
+                  <td>${t.service_type}</td>
+                  <td>₱${parseFloat(t.total_amount).toFixed(2)}</td>
+                  <td>${t.payment_method || 'N/A'}</td>
+                  <td>${t.status}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+          
+          <div class="totals-section">
+            <h3>📊 Summary Totals</h3>
+            <div class="totals-grid">
+              ${Object.entries(productTotals).map(([product, qty]) => 
+                `<div class="total-item"><strong>${product}:</strong> ${qty} units</div>`
+              ).join('')}
+            </div>
+            <div class="grand-total">
+              GRAND TOTAL: ₱${grandTotal.toFixed(2)}
+            </div>
+          </div>
+          
+          <script>
+            window.onload = function() {
+              setTimeout(function() { window.print(); }, 300);
+              window.onafterprint = function() {
+                window.close();
+              }
+            }
+          </script>
+        </body>
+        </html>
+      `;
+      
+      const printWindow = window.open('', '_blank');
+      if (printWindow) {
+        printWindow.document.write(printContent);
+        printWindow.document.close();
+      } else {
+        toast.error('Please allow popups to print');
+      }
+      
     } else if (type === 'pdf') {
-      alert('PDF export will be available in the next update. For now, use Print (Ctrl+P) and select "Save as PDF"');
-    } else if (type === 'excel') {
-      // Create CSV format
-      const headers = ['Order Number', 'Date', 'Customer', 'Category', 'Amount', 'Status'];
+      // Direct PDF download using jsPDF - NO PRINT DIALOG!
+      const doc = new jsPDF('landscape', 'mm', 'a4');
+      
+      // Add title
+      doc.setFontSize(18);
+      doc.setTextColor(8, 145, 178);
+      doc.text(`Transaction Report - ${activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}`, 14, 15);
+      
+      // Add summary info
+      doc.setFontSize(9);
+      doc.setTextColor(0, 0, 0);
+      doc.text(`Date Range: ${startDate} to ${endDate}  |  Total Transactions: ${transactions.length}`, 14, 22);
+      
+      // Prepare table data (using PHP instead of peso symbol for PDF compatibility)
+      const tableData = transactions.map(t => [
+        t.order_number,
+        t.date,
+        t.time,
+        t.customer_name || 'Walk-in',
+        t.items.map((item, idx) => `${idx + 1}. ${item.product_name} (x${item.quantity}) - PHP${(item.quantity * item.unit_price).toFixed(2)}`).join('\n'),
+        t.service_type,
+        `PHP${parseFloat(t.total_amount).toFixed(2)}`,
+        t.payment_method || 'N/A',
+        t.status
+      ]);
+      
+      // Add table using autoTable
+      autoTable(doc, {
+        startY: 28,
+        head: [['Order #', 'Date', 'Time', 'Customer', 'Products', 'Category', 'Amount', 'Payment', 'Status']],
+        body: tableData,
+        styles: {
+          fontSize: 7,
+          cellPadding: 2,
+        },
+        headStyles: {
+          fillColor: [8, 145, 178],
+          textColor: 255,
+          fontStyle: 'bold',
+          halign: 'left'
+        },
+        columnStyles: {
+          0: { cellWidth: 22 },
+          1: { cellWidth: 20 },
+          2: { cellWidth: 18 },
+          3: { cellWidth: 25 },
+          4: { cellWidth: 80 },
+          5: { cellWidth: 25 },
+          6: { cellWidth: 20 },
+          7: { cellWidth: 22 },
+          8: { cellWidth: 18 }
+        },
+        alternateRowStyles: {
+          fillColor: [245, 245, 245]
+        },
+        margin: { left: 14, right: 14 }
+      });
+      
+      // Add totals section
+      const finalY = doc.lastAutoTable.finalY + 10;
+      
+      doc.setFillColor(240, 249, 255);
+      doc.rect(14, finalY, 270, 5 + (Object.keys(productTotals).length * 5) + 12, 'F');
+      
+      doc.setFontSize(10);
+      doc.setTextColor(8, 145, 178);
+      doc.text('Summary Totals', 16, finalY + 4);
+      
+      doc.setFontSize(8);
+      doc.setTextColor(0, 0, 0);
+      let yPos = finalY + 10;
+      Object.entries(productTotals).forEach(([product, qty]) => {
+        doc.text(`${product}: ${qty} units`, 16, yPos);
+        yPos += 5;
+      });
+      
+      // Grand total
+      doc.setFillColor(8, 145, 178);
+      doc.rect(14, yPos + 2, 270, 8, 'F');
+      doc.setFontSize(11);
+      doc.setTextColor(255, 255, 255);
+      doc.text(`GRAND TOTAL: PHP${grandTotal.toFixed(2)}`, doc.internal.pageSize.width / 2, yPos + 7, { align: 'center' });
+      
+      // Save PDF directly
+      doc.save(`reports_${activeTab}_${startDate}_to_${endDate}.pdf`);
+      toast.success('PDF downloaded successfully!');
+      
+    } else if (type === 'csv') {
+      // Create CSV with products on new lines in same cell and proper column widths
+      const columnWidths = {
+        orderNumber: 18,
+        date: 12,
+        time: 10,
+        customer: 20,
+        products: 60,
+        category: 18,
+        amount: 12,
+        payment: 15,
+        status: 12
+      };
+      
+      // Helper function to pad strings to specific width
+      const padString = (str, width) => {
+        const strValue = String(str || '');
+        return strValue.length > width ? strValue.substring(0, width - 3) + '...' : strValue.padEnd(width);
+      };
+      
+      // Create header row
+      const headers = [
+        padString('Order Number', columnWidths.orderNumber),
+        padString('Date', columnWidths.date),
+        padString('Time', columnWidths.time),
+        padString('Customer', columnWidths.customer),
+        padString('Products', columnWidths.products),
+        padString('Category', columnWidths.category),
+        padString('Amount', columnWidths.amount),
+        padString('Payment Method', columnWidths.payment),
+        padString('Status', columnWidths.status)
+      ];
+      
+      // Create data rows
+      const rows = transactions.map(t => {
+        const productsText = t.items.map((item, idx) => 
+          `${idx + 1}. ${item.product_name} (x${item.quantity}) - ₱${(item.quantity * item.unit_price).toFixed(2)}`
+        ).join(' | ');
+        
+        return [
+          padString(t.order_number, columnWidths.orderNumber),
+          padString(t.date, columnWidths.date),
+          padString(t.time, columnWidths.time),
+          padString(t.customer_name || 'Walk-in', columnWidths.customer),
+          padString(productsText, columnWidths.products),
+          padString(t.service_type, columnWidths.category),
+          padString('₱' + parseFloat(t.total_amount).toFixed(2), columnWidths.amount),
+          padString(t.payment_method || 'N/A', columnWidths.payment),
+          padString(t.status, columnWidths.status)
+        ];
+      });
+      
+      // Add separator
+      const separator = [
+        '='.repeat(columnWidths.orderNumber),
+        '='.repeat(columnWidths.date),
+        '='.repeat(columnWidths.time),
+        '='.repeat(columnWidths.customer),
+        '='.repeat(columnWidths.products),
+        '='.repeat(columnWidths.category),
+        '='.repeat(columnWidths.amount),
+        '='.repeat(columnWidths.payment),
+        '='.repeat(columnWidths.status)
+      ];
+      
+      // Add summary totals
+      const summaryRows = [];
+      summaryRows.push(['']); // Empty row
+      summaryRows.push([padString('SUMMARY TOTALS', 80)]);
+      summaryRows.push(['']); // Empty row
+      summaryRows.push([padString('Product', 40), padString('Total Quantity', 20)]);
+      summaryRows.push(['-'.repeat(40), '-'.repeat(20)]);
+      
+      Object.entries(productTotals).forEach(([product, qty]) => {
+        summaryRows.push([padString(product, 40), padString(qty + ' units', 20)]);
+      });
+      
+      summaryRows.push(['']); // Empty row
+      summaryRows.push([padString('GRAND TOTAL:', 40), padString('₱' + grandTotal.toFixed(2), 20)]);
+      
+      // Build CSV content
       const csvContent = [
         headers.join(','),
-        ...transactions.map(t => [
-          t.order_number,
-          t.date,
-          t.customer_name || 'Walk-in',
-          t.service_type,
-          t.total_amount,
-          t.status
-        ].join(','))
+        separator.join(','),
+        ...rows.map(row => row.join(',')),
+        separator.join(','),
+        ...summaryRows.map(row => row.join(','))
       ].join('\n');
       
-      // Download CSV
-      const blob = new Blob([csvContent], { type: 'text/csv' });
+      const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `reports_${activeTab}_${new Date().toISOString().split('T')[0]}.csv`;
+      a.download = `reports_${activeTab}_${startDate}_to_${endDate}.csv`;
+      document.body.appendChild(a);
       a.click();
+      document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
+      
+      toast.success('CSV file with totals downloaded successfully!');
     }
   };
 
@@ -137,13 +413,19 @@ const Reports = () => {
 
   const getIncompleteTransactions = () => {
     if (!reportData?.transactions) return [];
-    return reportData.transactions.filter(t => t.status !== 'Completed');
+    return reportData.transactions.filter(t => t.status !== 'Completed' && t.status !== 'Cancelled');
+  };
+
+  const getCancelledTransactions = () => {
+    if (!reportData?.transactions) return [];
+    return reportData.transactions.filter(t => t.status === 'Cancelled');
   };
 
   // Get transactions based on active tab
   const getTransactionsByTab = () => {
     if (activeTab === 'completed') return getCompletedTransactions();
     if (activeTab === 'incomplete') return getIncompleteTransactions();
+    if (activeTab === 'cancelled') return getCancelledTransactions();
     return reportData?.transactions || [];
   };
 
@@ -203,10 +485,7 @@ const Reports = () => {
   if (loading) {
     return (
       <div className="p-8 flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-cyan-600 mx-auto"></div>
-          <p className="mt-4 text-slate-600">Loading reports...</p>
-        </div>
+        <PageLoadingSpinner message="Loading reports..." />
       </div>
     );
   }
@@ -442,36 +721,21 @@ const Reports = () => {
         </div>
       </div>
 
-      {/* Action Buttons */}
-      <div className="flex flex-wrap gap-4 mb-6 no-print">
-        <button 
-          onClick={() => handleExport('excel')}
-          className="px-6 py-3 bg-gradient-to-r from-teal-600 to-emerald-600 text-white rounded-xl font-semibold shadow-lg shadow-teal-500/30 hover:shadow-xl hover:shadow-teal-500/40 transition-all hover:scale-105 active:scale-95 flex items-center gap-2"
-        >
-          <Download className="w-5 h-5" />
-          Export to CSV
-        </button>
+      {/* Action Buttons - Right Aligned */}
+      <div className="flex justify-end gap-3 mb-6 no-print">
         <button 
           onClick={() => handleExport('pdf')}
-          className="px-6 py-3 bg-white text-slate-700 border-2 border-slate-200 rounded-xl font-semibold hover:border-rose-600 hover:text-rose-600 transition-all hover:scale-105 active:scale-95 flex items-center gap-2"
+          className="px-5 py-2.5 bg-gradient-to-r from-cyan-600 to-blue-600 text-white rounded-lg font-medium shadow-md hover:shadow-lg transition-all hover:scale-105 active:scale-95 flex items-center gap-2"
         >
-          <Download className="w-5 h-5" />
-          Export to PDF
+          <Download className="w-4 h-4" />
+          Save as PDF
         </button>
         <button 
           onClick={() => handleExport('print')}
-          className="px-6 py-3 bg-white text-slate-700 border-2 border-slate-200 rounded-xl font-semibold hover:border-violet-600 hover:text-violet-600 transition-all hover:scale-105 active:scale-95 flex items-center gap-2"
+          className="px-5 py-2.5 bg-white text-slate-700 border border-slate-300 rounded-lg font-medium hover:bg-slate-50 transition-all hover:scale-105 active:scale-95 flex items-center gap-2"
         >
-          <Printer className="w-5 h-5" />
+          <Printer className="w-4 h-4" />
           Print Report
-        </button>
-        <button 
-          onClick={() => fetchInitialData()}
-          disabled={loading}
-          className="px-6 py-3 bg-white text-slate-700 border-2 border-slate-200 rounded-xl font-semibold hover:border-cyan-600 hover:text-cyan-600 transition-all hover:scale-105 active:scale-95 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <FileText className="w-5 h-5" />
-          {loading ? 'Loading...' : 'Refresh All'}
         </button>
       </div>
 
@@ -523,6 +787,26 @@ const Reports = () => {
           
           <button
             onClick={() => {
+              setActiveTab('cancelled');
+              setCurrentPage(1);
+            }}
+            className={`px-6 py-3 font-semibold transition-all ${
+              activeTab === 'cancelled'
+                ? 'border-b-2 border-red-600 text-red-600'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <XCircle className="w-4 h-4" />
+              <span>Cancelled</span>
+              <span className="ml-2 px-2 py-0.5 bg-red-100 text-red-700 text-xs rounded-full">
+                {getCancelledTransactions().length}
+              </span>
+            </div>
+          </button>
+          
+          <button
+            onClick={() => {
               setActiveTab('all');
               setCurrentPage(1);
             }}
@@ -542,26 +826,24 @@ const Reports = () => {
           </button>
         </div>
 
-        {/* Summary Stats for Active Tab */}
+        {/* Summary Stats - from backend (Completed orders only) */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
           <div className="bg-gradient-to-br from-teal-50 to-cyan-50 rounded-lg p-4 border border-teal-200">
             <div className="text-sm text-teal-700 font-semibold mb-1">Total Orders</div>
-            <div className="text-2xl font-bold text-teal-900">{getTransactionsByTab().length}</div>
+            <div className="text-2xl font-bold text-teal-900">{reportData?.summary_stats?.total_orders || 0}</div>
           </div>
           
           <div className="bg-gradient-to-br from-emerald-50 to-teal-50 rounded-lg p-4 border border-emerald-200">
             <div className="text-sm text-emerald-700 font-semibold mb-1">Total Revenue</div>
             <div className="text-2xl font-bold text-emerald-900">
-              ₱{getTransactionsByTab().reduce((sum, t) => sum + parseFloat(t.total_amount), 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+              ₱{(reportData?.summary_stats?.total_revenue || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
             </div>
           </div>
           
           <div className="bg-gradient-to-br from-blue-50 to-cyan-50 rounded-lg p-4 border border-blue-200">
             <div className="text-sm text-blue-700 font-semibold mb-1">Average Order Value</div>
             <div className="text-2xl font-bold text-blue-900">
-              ₱{getTransactionsByTab().length > 0 
-                ? (getTransactionsByTab().reduce((sum, t) => sum + parseFloat(t.total_amount), 0) / getTransactionsByTab().length).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})
-                : '0.00'}
+              ₱{(reportData?.summary_stats?.average_order_value || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
             </div>
           </div>
         </div>
@@ -600,17 +882,6 @@ const Reports = () => {
             />
           </div>
 
-          {/* Apply Filters Button */}
-          <div>
-            <button
-              onClick={fetchTransactions}
-              disabled={tableLoading}
-              className="w-full px-4 py-2 bg-gradient-to-r from-cyan-600 to-teal-600 text-white rounded-lg font-semibold hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {tableLoading ? 'Loading...' : 'Apply Filters'}
-            </button>
-          </div>
-
           {/* Sort By */}
           <div className="flex gap-2">
             <select
@@ -632,31 +903,22 @@ const Reports = () => {
           </div>
         </div>
 
-        {/* Table Loading Overlay */}
-        {tableLoading && (
-          <div className="flex items-center justify-center py-8">
-            <div className="flex items-center gap-3">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-cyan-600"></div>
-              <span className="text-slate-600 font-medium">Updating transactions...</span>
-            </div>
-          </div>
-        )}
-
-        {/* Table */}
-        {!tableLoading && (
-          <>
+        {/* Table - Real-time updates without loading overlay */}
         {/* Mobile Card View */}
         <div className="block md:hidden p-4 space-y-4">
           {getPaginatedData().length === 0 ? (
             <div className="text-center py-12">
               <div className={`inline-flex items-center justify-center w-16 h-16 rounded-full mb-4 ${
                 activeTab === 'completed' ? 'bg-teal-100' : 
-                activeTab === 'incomplete' ? 'bg-amber-100' : 'bg-slate-100'
+                activeTab === 'incomplete' ? 'bg-amber-100' :
+                activeTab === 'cancelled' ? 'bg-red-100' : 'bg-slate-100'
               }`}>
                 {activeTab === 'completed' ? (
                   <CheckCircle className="w-8 h-8 text-teal-600" />
                 ) : activeTab === 'incomplete' ? (
                   <Clock className="w-8 h-8 text-amber-600" />
+                ) : activeTab === 'cancelled' ? (
+                  <XCircle className="w-8 h-8 text-red-600" />
                 ) : (
                   <FileText className="w-8 h-8 text-slate-600" />
                 )}
@@ -664,6 +926,7 @@ const Reports = () => {
               <p className="text-slate-600 font-medium mb-2">
                 {activeTab === 'completed' && 'No completed orders found'}
                 {activeTab === 'incomplete' && 'No pending or in-progress orders'}
+                {activeTab === 'cancelled' && 'No cancelled orders'}
                 {activeTab === 'all' && 'No transactions found'}
               </p>
               <p className="text-sm text-slate-500">
@@ -671,8 +934,8 @@ const Reports = () => {
               </p>
             </div>
           ) : (
-            getPaginatedData().map((transaction, index) => (
-              <div key={index} className="bg-slate-50 rounded-xl p-4 space-y-3 border border-slate-200">
+            getPaginatedData().map((transaction) => (
+              <div key={`mobile-transaction-${transaction.order_id}`} className="bg-slate-50 rounded-xl p-4 space-y-3 border border-slate-200">
                 <div className="flex items-start justify-between">
                   <div>
                     <h3 className="font-semibold text-slate-900">{transaction.order_number}</h3>
@@ -727,12 +990,15 @@ const Reports = () => {
             <div className="text-center py-12">
               <div className={`inline-flex items-center justify-center w-16 h-16 rounded-full mb-4 ${
                 activeTab === 'completed' ? 'bg-teal-100' : 
-                activeTab === 'incomplete' ? 'bg-amber-100' : 'bg-slate-100'
+                activeTab === 'incomplete' ? 'bg-amber-100' :
+                activeTab === 'cancelled' ? 'bg-red-100' : 'bg-slate-100'
               }`}>
                 {activeTab === 'completed' ? (
                   <CheckCircle className="w-8 h-8 text-teal-600" />
                 ) : activeTab === 'incomplete' ? (
                   <Clock className="w-8 h-8 text-amber-600" />
+                ) : activeTab === 'cancelled' ? (
+                  <XCircle className="w-8 h-8 text-red-600" />
                 ) : (
                   <FileText className="w-8 h-8 text-slate-600" />
                 )}
@@ -740,6 +1006,7 @@ const Reports = () => {
               <p className="text-slate-600 font-medium mb-2">
                 {activeTab === 'completed' && 'No completed orders found'}
                 {activeTab === 'incomplete' && 'No pending or in-progress orders'}
+                {activeTab === 'cancelled' && 'No cancelled orders'}
                 {activeTab === 'all' && 'No transactions found'}
               </p>
               <p className="text-sm text-slate-500">
@@ -751,29 +1018,34 @@ const Reports = () => {
               <thead>
                 <tr className="bg-gradient-to-r from-slate-50 to-slate-100">
                   <th className="px-4 py-3 text-left text-sm font-semibold text-slate-700">Order #</th>
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-slate-700">Date/Time</th>
                   <th className="px-4 py-3 text-left text-sm font-semibold text-slate-700">Customer</th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-slate-700">Items</th>
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-slate-700" style={{ maxWidth: '250px' }}>Products</th>
                   <th className="px-4 py-3 text-left text-sm font-semibold text-slate-700">Category</th>
                   <th className="px-4 py-3 text-right text-sm font-semibold text-slate-700">Amount</th>
+                  <th className="px-4 py-3 text-center text-sm font-semibold text-slate-700">Payment</th>
                   <th className="px-4 py-3 text-center text-sm font-semibold text-slate-700">Status</th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-slate-700">Date</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
-                {getPaginatedData().map((transaction, index) => (
-                <tr key={index} className="hover:bg-slate-50 transition-colors">
+                {getPaginatedData().map((transaction) => (
+                <tr key={`transaction-${transaction.order_id}`} className="hover:bg-slate-50 transition-colors">
                   <td className="px-4 py-3 text-sm font-medium text-slate-900">
                     {transaction.order_number}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-slate-600">
+                    <div className="font-medium">{transaction.date}</div>
+                    <div className="text-xs text-slate-500">{transaction.time}</div>
                   </td>
                   <td className="px-4 py-3 text-sm text-slate-700">
                     {transaction.customer_name}
                   </td>
-                  <td className="px-4 py-3 text-sm text-slate-700">
+                  <td className="px-4 py-3 text-sm text-slate-700" style={{ maxWidth: '250px', wordWrap: 'break-word', whiteSpace: 'normal' }}>
                     <div className="space-y-1">
                       {transaction.items && transaction.items.length > 0 ? (
                         transaction.items.map((item, idx) => (
-                          <div key={idx} className="text-xs">
-                            {item.product_name} <span className="text-slate-500">(x{item.quantity})</span>
+                          <div key={`item-${transaction.order_id}-${idx}`} className="text-xs leading-relaxed">
+                            <span className="font-medium">{idx + 1}.</span> {item.product_name} <span className="text-slate-500">(x{item.quantity}) - ₱{(item.quantity * item.unit_price).toFixed(2)}</span>
                           </div>
                         ))
                       ) : (
@@ -781,18 +1053,17 @@ const Reports = () => {
                       )}
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-sm text-slate-700">
-                    {transaction.items && transaction.items.length > 0 ? (
-                      transaction.items.map(item => item.product_name).join(', ')
-                    ) : (
-                      <span className="text-slate-400">-</span>
-                    )}
+                  <td className="px-4 py-3 text-sm text-slate-700" style={{ wordWrap: 'break-word' }}>
+                    {transaction.service_type}
                   </td>
                   <td className="px-4 py-3 text-sm font-semibold text-right text-slate-900">
-                    ₱{transaction.total_amount.toFixed(2)}
+                    ₱{parseFloat(transaction.total_amount).toFixed(2)}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-center text-slate-700">
+                    {transaction.payment_method || 'N/A'}
                   </td>
                   <td className="px-4 py-3 text-center">
-                    <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                    <span className={`px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap ${
                       transaction.status === 'Completed' ? 'bg-teal-100 text-teal-700' :
                       transaction.status === 'In Progress' ? 'bg-cyan-100 text-cyan-700' :
                       transaction.status === 'Pending' ? 'bg-amber-100 text-amber-700' :
@@ -801,18 +1072,12 @@ const Reports = () => {
                       {transaction.status}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-sm text-slate-600">
-                    <div>{transaction.date}</div>
-                    <div className="text-xs text-slate-500">{transaction.time}</div>
-                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
           )}
         </div>
-        </>
-        )}
 
         {/* Pagination */}
         <Pagination

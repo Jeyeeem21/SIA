@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, memo, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Package,
@@ -19,28 +19,80 @@ import {
   CalendarDays,
   CalendarRange,
   X,
-  AlertCircle
+  AlertCircle,
+  Building2,
+  Users,
+  FileText,
+  Home
 } from 'lucide-react';
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Area, AreaChart } from 'recharts';
-import { dashboardAPI, salesAnalyticsAPI } from '../services/api';
+import { useDashboard } from '../hooks/useDashboard';
+import { LoadingBar, StatsCardSkeleton } from '../components/LoadingStates';
+import { useQuery } from '@tanstack/react-query';
+import { salesAnalyticsAPI, rentalsAPI } from '../services/api';
 import toast from 'react-hot-toast';
+
+// Memoized Stats Card Component - prevents unnecessary re-renders
+const StatsCard = memo(({ stat, index }) => {
+  const Icon = stat.icon;
+  const TrendIcon = stat.trend === 'up' ? ArrowUpRight : ArrowDownRight;
+  
+  return (
+    <div 
+      key={index} 
+      className="group relative bg-white rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 hover:-translate-y-2 cursor-pointer overflow-hidden border border-slate-100"
+      style={{ animationDelay: `${index * 100}ms` }}
+    >
+      <div className={`absolute inset-0 bg-gradient-to-br ${stat.color} opacity-0 group-hover:opacity-5 transition-opacity duration-300`}></div>
+      
+      <div className="relative">
+        <div className="flex items-center justify-between mb-4">
+          <div className={`${stat.bgColor} p-4 rounded-xl group-hover:scale-110 transition-transform duration-300`}>
+            <Icon className={`w-7 h-7 ${stat.textColor}`} />
+          </div>
+          <div className={`flex items-center gap-1 text-sm font-bold px-3 py-1 rounded-full ${
+            stat.trend === 'up' ? 'bg-teal-100 text-teal-600' : 'bg-rose-100 text-rose-600'
+          }`}>
+            <TrendIcon className="w-4 h-4" />
+            {stat.change}
+          </div>
+        </div>
+        <h3 className="text-slate-500 text-sm font-semibold uppercase tracking-wider mb-1">{stat.title}</h3>
+        <p className="text-3xl font-bold text-slate-900 group-hover:scale-105 transition-transform duration-300">{stat.value}</p>
+      </div>
+    </div>
+  );
+});
+
+StatsCard.displayName = 'StatsCard';
 
 const Dashboard = () => {
   const navigate = useNavigate();
-  const [dashboardData, setDashboardData] = useState(null);
-  const [loading, setLoading] = useState(true);
   const [salesPeriod, setSalesPeriod] = useState('daily'); // 'daily', 'weekly', 'monthly'
-  const [salesAnalytics, setSalesAnalytics] = useState(null);
-  const [analyticsLoading, setAnalyticsLoading] = useState(true);
+  
+  // React Query hooks - REALTIME updates every second
+  const { data: dashboardData, isLoading } = useDashboard();
+  const { data: salesAnalytics, isLoading: analyticsLoading } = useQuery({
+    queryKey: ['salesAnalytics'],
+    queryFn: async () => {
+      const response = await salesAnalyticsAPI.getOverview();
+      return response.data;
+    },
+    // Uses global config: refetchInterval: 1000 (every second)
+  });
+  
+  // Fetch Rentals Stats
+  const { data: rentalsStats, isLoading: rentalsLoading } = useQuery({
+    queryKey: ['rentalStats'],
+    queryFn: async () => {
+      const response = await rentalsAPI.getStats();
+      return response.data;
+    },
+  });
   
   // Low stock notification state
   const [currentNotificationIndex, setCurrentNotificationIndex] = useState(0);
   const [showNotification, setShowNotification] = useState(false);
-
-  useEffect(() => {
-    fetchDashboardData();
-    fetchSalesAnalytics();
-  }, []);
 
   // Check for low stock every 10 seconds, show for 5 seconds
   useEffect(() => {
@@ -77,36 +129,21 @@ const Dashboard = () => {
     };
   }, [dashboardData]);
 
-  const fetchDashboardData = async () => {
-    try {
-      setLoading(true);
-      const response = await dashboardAPI.getStats();
-      setDashboardData(response.data);
-    } catch (error) {
-      toast.error('Failed to load dashboard data');
-      console.error('Error fetching dashboard:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchSalesAnalytics = async () => {
-    try {
-      setAnalyticsLoading(true);
-      const response = await salesAnalyticsAPI.getOverview();
-      setSalesAnalytics(response.data);
-    } catch (error) {
-      console.error('Error fetching sales analytics:', error);
-      toast.error('Failed to load sales analytics');
-    } finally {
-      setAnalyticsLoading(false);
-    }
-  };
-
-  if (loading || !dashboardData) {
+  if (isLoading || !dashboardData) {
     return (
-      <div className="p-8 bg-gradient-to-br from-slate-50 via-cyan-50/30 to-teal-50/20 min-h-full flex items-center justify-center">
-        <div className="text-xl text-slate-600">Loading dashboard...</div>
+      <div className="p-8 bg-gradient-to-br from-slate-50 via-cyan-50/30 to-teal-50/20 min-h-full">
+        <div className="mb-8">
+          <h1 className="text-4xl font-bold bg-gradient-to-r from-slate-900 via-cyan-800 to-teal-900 bg-clip-text text-transparent mb-2">
+            Dashboard Overview
+          </h1>
+          <p className="text-slate-600">Welcome back! Here's what's happening today.</p>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          <StatsCardSkeleton />
+          <StatsCardSkeleton />
+          <StatsCardSkeleton />
+          <StatsCardSkeleton />
+        </div>
       </div>
     );
   }
@@ -181,10 +218,11 @@ const Dashboard = () => {
     periodDescription = `Monthly sales for ${new Date().getFullYear()}`;
   }
 
-  // Inventory status data (calculated from stats)
+  // Inventory status data (from backend stats)
   const inventoryData = [
-    { name: 'In Stock', value: dashboardData.stats.total_products - dashboardData.stats.low_stock_count, color: '#14b8a6' },
-    { name: 'Low Stock', value: dashboardData.stats.low_stock_count, color: '#f59e0b' },
+    { name: 'Available', value: dashboardData.stats.available_count || 0, color: '#14b8a6' },
+    { name: 'Low Stock', value: dashboardData.stats.low_stock_count || 0, color: '#f59e0b' },
+    { name: 'Out of Stock', value: dashboardData.stats.out_of_stock_count || 0, color: '#ef4444' },
   ];
 
   // Top products data
@@ -232,6 +270,7 @@ const Dashboard = () => {
 
   return (
     <div className="p-8 bg-gradient-to-br from-slate-50 via-cyan-50/30 to-teal-50/20 min-h-full">
+      {/* NO LoadingBar - instant dashboard updates from cache */}
       {/* Header */}
       <div className="mb-8 animate-fade-in">
         <div className="flex items-center justify-between">
@@ -241,7 +280,7 @@ const Dashboard = () => {
             </h1>
             <p className="text-slate-600 mt-2 flex items-center gap-2">
               <span className="w-2 h-2 bg-teal-500 rounded-full animate-pulse"></span>
-              Real-time overview of daily operations.
+              Real-time overview of daily operations (auto-refreshes every 30s).
             </p>
           </div>
           <div className="text-right">
@@ -253,37 +292,9 @@ const Dashboard = () => {
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        {stats.map((stat, index) => {
-          const Icon = stat.icon;
-          const TrendIcon = stat.trend === 'up' ? ArrowUpRight : ArrowDownRight;
-          
-          return (
-            <div 
-              key={index} 
-              className="group relative bg-white rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 hover:-translate-y-2 cursor-pointer overflow-hidden border border-slate-100"
-              style={{ animationDelay: `${index * 100}ms` }}
-            >
-              {/* Gradient overlay */}
-              <div className={`absolute inset-0 bg-gradient-to-br ${stat.color} opacity-0 group-hover:opacity-5 transition-opacity duration-300`}></div>
-              
-              <div className="relative">
-                <div className="flex items-center justify-between mb-4">
-                  <div className={`${stat.bgColor} p-4 rounded-xl group-hover:scale-110 transition-transform duration-300`}>
-                    <Icon className={`w-7 h-7 ${stat.textColor}`} />
-                  </div>
-                  <div className={`flex items-center gap-1 text-sm font-bold px-3 py-1 rounded-full ${
-                    stat.trend === 'up' ? 'bg-teal-100 text-teal-600' : 'bg-rose-100 text-rose-600'
-                  }`}>
-                    <TrendIcon className="w-4 h-4" />
-                    {stat.change}
-                  </div>
-                </div>
-                <h3 className="text-slate-500 text-sm font-semibold uppercase tracking-wider mb-1">{stat.title}</h3>
-                <p className="text-3xl font-bold text-slate-900 group-hover:scale-105 transition-transform duration-300">{stat.value}</p>
-              </div>
-            </div>
-          );
-        })}
+        {stats.map((stat, index) => (
+          <StatsCard key={index} stat={stat} index={index} />
+        ))}
       </div>
 
       {/* Sales Analytics - Daily, Monthly, Yearly */}
@@ -600,7 +611,11 @@ const Dashboard = () => {
         {/* Inventory Status Pie Chart - 25% width (1 column) */}
         <div className="lg:col-span-1 bg-white rounded-2xl shadow-lg p-6 border border-slate-100 hover:shadow-2xl transition-all duration-300 flex flex-col">
           <h2 className="text-xl font-bold text-slate-900 mb-2">Inventory Status</h2>
-          <p className="text-sm text-slate-500 mb-4">Current stock overview</p>
+          <p className="text-sm text-slate-500 mb-1">Current stock overview</p>
+          <div className="mb-3 p-3 bg-gradient-to-r from-cyan-50 to-teal-50 rounded-lg border border-cyan-100">
+            <p className="text-xs text-slate-600 mb-1">Total Items</p>
+            <p className="text-2xl font-bold text-cyan-600">{dashboardData.stats.total_products}</p>
+          </div>
           <ResponsiveContainer width="100%" height={200}>
             <PieChart>
               <Pie
@@ -632,6 +647,278 @@ const Dashboard = () => {
           </div>
         </div>
       </div>
+
+      {/* Rentals Analytics Section */}
+      {rentalsStats && (
+        <>
+          {/* Rentals Stats Cards - Matching Dashboard Style */}
+          <div className="mb-8">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="p-3 bg-gradient-to-br from-cyan-500 to-teal-600 rounded-xl shadow-lg">
+                  <Building2 className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <h2 className="text-2xl font-bold text-slate-900">Rental Properties</h2>
+                  <p className="text-sm text-slate-600">School property rental analytics</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => navigate('/rentals')}
+                className="px-5 py-2.5 bg-gradient-to-r from-cyan-600 to-teal-600 text-white rounded-xl text-sm font-medium hover:from-cyan-700 hover:to-teal-700 transition-all hover:scale-105 active:scale-95 shadow-lg shadow-cyan-500/30"
+              >
+                Manage Rentals
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+              {/* Total Properties Card */}
+              <div className="group relative bg-white rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 hover:-translate-y-2 cursor-pointer overflow-hidden border border-slate-100">
+                <div className="absolute inset-0 bg-gradient-to-br from-cyan-500 to-teal-600 opacity-0 group-hover:opacity-5 transition-opacity duration-300"></div>
+                <div className="relative">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="bg-cyan-50 p-4 rounded-xl group-hover:scale-110 transition-transform duration-300">
+                      <Home className="w-7 h-7 text-cyan-600" />
+                    </div>
+                    <div className="flex items-center gap-1 text-sm font-bold px-3 py-1 rounded-full bg-cyan-100 text-cyan-600">
+                      {Math.round((rentalsStats.occupied_properties / rentalsStats.total_properties) * 100) || 0}%
+                    </div>
+                  </div>
+                  <h3 className="text-slate-500 text-sm font-semibold uppercase tracking-wider mb-1">Total Properties</h3>
+                  <p className="text-3xl font-bold text-slate-900 group-hover:scale-105 transition-transform duration-300">
+                    {rentalsStats.total_properties}
+                  </p>
+                  <div className="text-sm text-slate-500 mt-2">
+                    {rentalsStats.occupied_properties} Occupied • {rentalsStats.vacant_properties} Vacant
+                  </div>
+                </div>
+              </div>
+
+              {/* Active Tenants Card */}
+              <div className="group relative bg-white rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 hover:-translate-y-2 cursor-pointer overflow-hidden border border-slate-100">
+                <div className="absolute inset-0 bg-gradient-to-br from-teal-500 to-cyan-600 opacity-0 group-hover:opacity-5 transition-opacity duration-300"></div>
+                <div className="relative">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="bg-teal-50 p-4 rounded-xl group-hover:scale-110 transition-transform duration-300">
+                      <Users className="w-7 h-7 text-teal-600" />
+                    </div>
+                    <div className="flex items-center gap-1 text-sm font-bold px-3 py-1 rounded-full bg-teal-100 text-teal-600">
+                      <ArrowUpRight className="w-4 h-4" />
+                      Active
+                    </div>
+                  </div>
+                  <h3 className="text-slate-500 text-sm font-semibold uppercase tracking-wider mb-1">Active Tenants</h3>
+                  <p className="text-3xl font-bold text-slate-900 group-hover:scale-105 transition-transform duration-300">
+                    {rentalsStats.total_tenants}
+                  </p>
+                  <div className="text-sm text-slate-500 mt-2">
+                    {rentalsStats.active_contracts} Active Contracts
+                  </div>
+                </div>
+              </div>
+
+              {/* Monthly Revenue Card */}
+              <div className="group relative bg-white rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 hover:-translate-y-2 cursor-pointer overflow-hidden border border-slate-100">
+                <div className="absolute inset-0 bg-gradient-to-br from-emerald-500 to-teal-600 opacity-0 group-hover:opacity-5 transition-opacity duration-300"></div>
+                <div className="relative">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="bg-emerald-50 p-4 rounded-xl group-hover:scale-110 transition-transform duration-300">
+                      <DollarSign className="w-7 h-7 text-emerald-600" />
+                    </div>
+                    <div className="flex items-center gap-1 text-sm font-bold px-3 py-1 rounded-full bg-emerald-100 text-emerald-600">
+                      <ArrowUpRight className="w-4 h-4" />
+                      Monthly
+                    </div>
+                  </div>
+                  <h3 className="text-slate-500 text-sm font-semibold uppercase tracking-wider mb-1">Monthly Revenue</h3>
+                  <p className="text-3xl font-bold text-slate-900 group-hover:scale-105 transition-transform duration-300">
+                    ₱{(rentalsStats.monthly_revenue || 0).toLocaleString()}
+                  </p>
+                  <div className="text-sm text-slate-500 mt-2">
+                    From {rentalsStats.occupied_properties} properties
+                  </div>
+                </div>
+              </div>
+
+              {/* Pending Items Card */}
+              <div className="group relative bg-white rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 hover:-translate-y-2 cursor-pointer overflow-hidden border border-slate-100">
+                <div className="absolute inset-0 bg-gradient-to-br from-amber-500 to-orange-600 opacity-0 group-hover:opacity-5 transition-opacity duration-300"></div>
+                <div className="relative">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="bg-amber-50 p-4 rounded-xl group-hover:scale-110 transition-transform duration-300">
+                      <AlertTriangle className="w-7 h-7 text-amber-600" />
+                    </div>
+                    <div className="flex items-center gap-1 text-sm font-bold px-3 py-1 rounded-full bg-amber-100 text-amber-600">
+                      <ArrowDownRight className="w-4 h-4" />
+                      Pending
+                    </div>
+                  </div>
+                  <h3 className="text-slate-500 text-sm font-semibold uppercase tracking-wider mb-1">Pending Tasks</h3>
+                  <p className="text-3xl font-bold text-slate-900 group-hover:scale-105 transition-transform duration-300">
+                    {(rentalsStats.pending_payments || 0) + (rentalsStats.pending_maintenance || 0)}
+                  </p>
+                  <div className="text-sm text-slate-500 mt-2">
+                    {rentalsStats.pending_payments} Payments • {rentalsStats.pending_maintenance} Maintenance
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Expiring Contracts Alert */}
+            {rentalsStats.expiring_contracts > 0 && (
+              <div className="mb-8 bg-gradient-to-r from-amber-50 to-orange-50 border-l-4 border-amber-500 rounded-xl shadow-lg p-5 hover:shadow-xl transition-all duration-300">
+                <div className="flex items-center gap-4">
+                  <div className="flex-shrink-0">
+                    <div className="w-12 h-12 bg-amber-500 rounded-full flex items-center justify-center animate-pulse">
+                      <Calendar className="w-6 h-6 text-white" />
+                    </div>
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-lg font-bold text-amber-900">
+                      {rentalsStats.expiring_contracts} {rentalsStats.expiring_contracts === 1 ? 'Contract' : 'Contracts'} Expiring Soon
+                    </h3>
+                    <p className="text-sm text-amber-700 mt-1">
+                      Review and renew contracts expiring within 60 days to maintain occupancy rates
+                    </p>
+                  </div>
+                  <button 
+                    onClick={() => navigate('/rentals')}
+                    className="px-5 py-2.5 bg-amber-600 text-white rounded-xl text-sm font-bold hover:bg-amber-700 transition-all hover:scale-105 active:scale-95 shadow-lg"
+                  >
+                    Review Now
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Rental Charts Grid */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Property Status Chart */}
+              <div className="bg-white rounded-2xl shadow-lg p-6 border border-slate-100 hover:shadow-2xl transition-all duration-300">
+                <h3 className="text-lg font-bold text-slate-900 mb-6 flex items-center gap-2">
+                  <Home className="w-5 h-5 text-cyan-600" />
+                  Property Status Distribution
+                </h3>
+                <ResponsiveContainer width="100%" height={280}>
+                  <PieChart>
+                    <Pie
+                      data={[
+                        { name: 'Occupied', value: rentalsStats.occupied_properties, color: '#14b8a6' },
+                        { name: 'Vacant', value: rentalsStats.vacant_properties, color: '#94a3b8' },
+                      ]}
+                      cx="50%"
+                      cy="50%"
+                      labelLine={false}
+                      label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                      outerRadius={100}
+                      fill="#8884d8"
+                      dataKey="value"
+                    >
+                      {[
+                        { name: 'Occupied', value: rentalsStats.occupied_properties, color: '#14b8a6' },
+                        { name: 'Vacant', value: rentalsStats.vacant_properties, color: '#94a3b8' },
+                      ].map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="grid grid-cols-2 gap-3 mt-4">
+                  <div className="p-3 bg-teal-50 rounded-lg border border-teal-200">
+                    <div className="flex items-center gap-2 mb-1">
+                      <div className="w-3 h-3 bg-teal-500 rounded-full"></div>
+                      <span className="text-xs font-semibold text-slate-600">Occupied</span>
+                    </div>
+                    <p className="text-2xl font-bold text-slate-900">{rentalsStats.occupied_properties}</p>
+                    <p className="text-xs text-slate-500 mt-1">
+                      {Math.round((rentalsStats.occupied_properties / rentalsStats.total_properties) * 100)}% occupancy
+                    </p>
+                  </div>
+                  <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+                    <div className="flex items-center gap-2 mb-1">
+                      <div className="w-3 h-3 bg-slate-400 rounded-full"></div>
+                      <span className="text-xs font-semibold text-slate-600">Vacant</span>
+                    </div>
+                    <p className="text-2xl font-bold text-slate-900">{rentalsStats.vacant_properties}</p>
+                    <p className="text-xs text-slate-500 mt-1">Available to rent</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Revenue & Tasks Overview */}
+              <div className="bg-white rounded-2xl shadow-lg p-6 border border-slate-100 hover:shadow-2xl transition-all duration-300">
+                <h3 className="text-lg font-bold text-slate-900 mb-6 flex items-center gap-2">
+                  <DollarSign className="w-5 h-5 text-emerald-600" />
+                  Revenue & Tasks Overview
+                </h3>
+                <ResponsiveContainer width="100%" height={280}>
+                  <BarChart
+                    data={[
+                      {
+                        name: 'Revenue',
+                        value: rentalsStats.monthly_revenue / 1000,
+                        color: '#10b981',
+                      },
+                      {
+                        name: 'Payments',
+                        value: rentalsStats.pending_payments * 2,
+                        color: '#f59e0b',
+                      },
+                      {
+                        name: 'Maintenance',
+                        value: rentalsStats.pending_maintenance * 3,
+                        color: '#f97316',
+                      },
+                    ]}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                    <XAxis dataKey="name" stroke="#64748b" style={{ fontSize: '12px' }} />
+                    <YAxis stroke="#64748b" style={{ fontSize: '12px' }} />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: '#fff',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: '8px',
+                        boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+                      }}
+                      formatter={(value, name) => {
+                        if (name === 'value') {
+                          return [`${value.toFixed(1)}`, 'Value'];
+                        }
+                        return [value, name];
+                      }}
+                    />
+                    <Bar dataKey="value" radius={[8, 8, 0, 0]}>
+                      {[
+                        { color: '#10b981' },
+                        { color: '#f59e0b' },
+                        { color: '#f97316' },
+                      ].map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+                <div className="grid grid-cols-3 gap-3 mt-4">
+                  <div className="p-3 bg-emerald-50 rounded-lg border border-emerald-200 text-center">
+                    <p className="text-xs font-semibold text-slate-600 mb-1">Monthly</p>
+                    <p className="text-lg font-bold text-emerald-600">₱{(rentalsStats.monthly_revenue / 1000).toFixed(1)}K</p>
+                  </div>
+                  <div className="p-3 bg-amber-50 rounded-lg border border-amber-200 text-center">
+                    <p className="text-xs font-semibold text-slate-600 mb-1">Payments</p>
+                    <p className="text-lg font-bold text-amber-600">{rentalsStats.pending_payments}</p>
+                  </div>
+                  <div className="p-3 bg-orange-50 rounded-lg border border-orange-200 text-center">
+                    <p className="text-xs font-semibold text-slate-600 mb-1">Maintenance</p>
+                    <p className="text-lg font-bold text-orange-600">{rentalsStats.pending_maintenance}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Recent Orders and Low Stock Alert - Side by Side */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

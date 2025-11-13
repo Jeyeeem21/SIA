@@ -2,6 +2,8 @@
 
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
+use App\Http\Middleware\SetCacheHeaders;
+use App\Http\Middleware\CompressResponse;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -21,6 +23,12 @@ return Application::configure(basePath: dirname(__DIR__))
             HandleAppearance::class,
             HandleInertiaRequests::class,
             AddLinkHeadersForPreloadedAssets::class,
+        ]);
+
+        // Performance optimization middlewares for API routes
+        $middleware->api(append: [
+            CompressResponse::class,  // Compress responses > 1KB
+            SetCacheHeaders::class,   // Add cache headers for static data
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {

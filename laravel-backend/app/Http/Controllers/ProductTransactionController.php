@@ -65,12 +65,12 @@ class ProductTransactionController extends Controller
     }
 
     /**
-     * Get product transaction growth rates by period
+     * Get product transaction growth rates by period - OPTIMIZED
      */
     public function getProductGrowthRates(Request $request)
     {
         try {
-            $period = $request->input('period', 'daily'); // daily, monthly, yearly
+            $period = $request->input('period', 'daily');
             $now = now();
 
             // Define date ranges based on period
@@ -95,63 +95,67 @@ class ProductTransactionController extends Controller
                     break;
             }
 
-            // Get all products with their inventory
-            $products = \App\Models\Product::with('inventory')->get()->filter(function ($product) {
-                return $product->inventory !== null;
-            })->map(function ($product) use ($currentStart, $currentEnd, $previousStart, $previousEnd) {
-                // Get current period transactions
-                $currentIn = ProductTransaction::where('product_id', $product->product_id)
-                    ->where('type', 'IN')
-                    ->whereBetween('created_at', [$currentStart, $currentEnd])
-                    ->sum('quantity') ?? 0;
+            // OPTIMIZED: Get all transactions in TWO queries with aggregation
+            $currentTransactions = ProductTransaction::selectRaw('
+                    product_id,
+                    SUM(CASE WHEN type = "IN" THEN quantity ELSE 0 END) as in_qty,
+                    SUM(CASE WHEN type = "OUT" THEN quantity ELSE 0 END) as out_qty
+                ')
+                ->whereBetween('created_at', [$currentStart, $currentEnd])
+                ->groupBy('product_id')
+                ->get()
+                ->keyBy('product_id')
+                ->map(function ($item) {
+                    return ['in' => (int)$item->in_qty, 'out' => (int)$item->out_qty];
+                });
 
-                $currentOut = ProductTransaction::where('product_id', $product->product_id)
-                    ->where('type', 'OUT')
-                    ->whereBetween('created_at', [$currentStart, $currentEnd])
-                    ->sum('quantity') ?? 0;
+            $previousTransactions = ProductTransaction::selectRaw('
+                    product_id,
+                    SUM(CASE WHEN type = "IN" THEN quantity ELSE 0 END) as in_qty,
+                    SUM(CASE WHEN type = "OUT" THEN quantity ELSE 0 END) as out_qty
+                ')
+                ->whereBetween('created_at', [$previousStart, $previousEnd])
+                ->groupBy('product_id')
+                ->get()
+                ->keyBy('product_id')
+                ->map(function ($item) {
+                    return ['in' => (int)$item->in_qty, 'out' => (int)$item->out_qty];
+                });
 
-                // Get previous period transactions
-                $previousIn = ProductTransaction::where('product_id', $product->product_id)
-                    ->where('type', 'IN')
-                    ->whereBetween('created_at', [$previousStart, $previousEnd])
-                    ->sum('quantity') ?? 0;
+            // Get products with inventory in one query
+            $products = \App\Models\Product::select('product_id', 'product_name')
+                ->with(['inventory:inventory_id,product_id,quantity'])
+                ->whereHas('inventory')
+                ->get()
+                ->map(function ($product) use ($currentTransactions, $previousTransactions) {
+                    $current = $currentTransactions[$product->product_id] ?? ['in' => 0, 'out' => 0];
+                    $previous = $previousTransactions[$product->product_id] ?? ['in' => 0, 'out' => 0];
 
-                $previousOut = ProductTransaction::where('product_id', $product->product_id)
-                    ->where('type', 'OUT')
-                    ->whereBetween('created_at', [$previousStart, $previousEnd])
-                    ->sum('quantity') ?? 0;
+                    $currentNet = $current['in'] - $current['out'];
+                    $previousNet = $previous['in'] - $previous['out'];
 
-                // Calculate net movements
-                $currentNet = $currentIn - $currentOut;
-                $previousNet = $previousIn - $previousOut;
-
-                // Calculate growth rate based on OUT transactions (sales activity)
-                $growthRate = 0;
-                if ($previousOut != 0) {
-                    // Compare current OUT vs previous OUT (sales growth)
-                    $growthRate = (($currentOut - $previousOut) / $previousOut) * 100;
-                } elseif ($currentOut > 0) {
-                    // New sales activity
-                    $growthRate = 100;
-                } elseif ($previousOut == 0 && $currentOut == 0) {
-                    // No activity in either period
+                    // Calculate growth rate
                     $growthRate = 0;
-                }
+                    if ($previous['out'] != 0) {
+                        $growthRate = (($current['out'] - $previous['out']) / $previous['out']) * 100;
+                    } elseif ($current['out'] > 0) {
+                        $growthRate = 100;
+                    }
 
-                return [
-                    'product_id' => $product->product_id,
-                    'product_name' => $product->product_name,
-                    'current_stock' => $product->inventory->quantity ?? 0,
-                    'current_in' => (int)$currentIn,
-                    'current_out' => (int)$currentOut,
-                    'current_net' => (int)$currentNet,
-                    'previous_in' => (int)$previousIn,
-                    'previous_out' => (int)$previousOut,
-                    'previous_net' => (int)$previousNet,
-                    'growth_rate' => round($growthRate, 2),
-                    'trend' => $growthRate > 0 ? 'up' : ($growthRate < 0 ? 'down' : 'stable'),
-                ];
-            })->values(); // Reindex array
+                    return [
+                        'product_id' => $product->product_id,
+                        'product_name' => $product->product_name,
+                        'current_stock' => $product->inventory->quantity ?? 0,
+                        'current_in' => (int)$current['in'],
+                        'current_out' => (int)$current['out'],
+                        'current_net' => (int)$currentNet,
+                        'previous_in' => (int)$previous['in'],
+                        'previous_out' => (int)$previous['out'],
+                        'previous_net' => (int)$previousNet,
+                        'growth_rate' => round($growthRate, 2),
+                        'trend' => $growthRate > 0 ? 'up' : ($growthRate < 0 ? 'down' : 'stable'),
+                    ];
+                });
 
             return response()->json([
                 'period' => $period,
@@ -166,13 +170,13 @@ class ProductTransactionController extends Controller
                 'products' => $products,
             ]);
         } catch (\Exception $e) {
+            \Log::error('Growth rates error: ' . $e->getMessage());
             return response()->json([
-                'error' => $e->getMessage(),
                 'period' => $request->input('period', 'daily'),
                 'current_period' => ['start' => now()->toDateString(), 'end' => now()->toDateString()],
                 'previous_period' => ['start' => now()->subDay()->toDateString(), 'end' => now()->subDay()->toDateString()],
                 'products' => [],
-            ], 200); // Return 200 with empty data instead of 500 error
+            ], 200);
         }
     }
 }

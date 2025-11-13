@@ -17,6 +17,7 @@ class Product extends Model
         'cost',
         'unit',
         'image_url',
+        'product_image',
         'expiration_date',
         'is_active',
         'status',

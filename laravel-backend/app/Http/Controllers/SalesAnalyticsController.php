@@ -7,6 +7,7 @@ use App\Models\Payment;
 use App\Models\SalesSummary;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
 use Carbon\Carbon;
 
 class SalesAnalyticsController extends Controller
@@ -19,33 +20,38 @@ class SalesAnalyticsController extends Controller
         $period = $request->input('period', 'daily'); // daily, monthly, yearly
         $date = $request->input('date', now()->format('Y-m-d'));
 
-        $currentDate = Carbon::parse($date);
+        // Cache for 1 second based on period and date - ULTRA FAST!
+        $cacheKey = "sales_analytics_{$period}_{$date}";
         
-        switch ($period) {
-            case 'daily':
-                $current = $this->getDailySales($currentDate);
-                $previous = $this->getDailySales($currentDate->copy()->subDay());
-                break;
-            case 'monthly':
-                $current = $this->getMonthlySales($currentDate);
-                $previous = $this->getMonthlySales($currentDate->copy()->subMonth());
-                break;
-            case 'yearly':
-                $current = $this->getYearlySales($currentDate);
-                $previous = $this->getYearlySales($currentDate->copy()->subYear());
-                break;
-        }
+        return Cache::remember($cacheKey, 1, function () use ($period, $date) {
+            $currentDate = Carbon::parse($date);
+            
+            switch ($period) {
+                case 'daily':
+                    $current = $this->getDailySales($currentDate);
+                    $previous = $this->getDailySales($currentDate->copy()->subDay());
+                    break;
+                case 'monthly':
+                    $current = $this->getMonthlySales($currentDate);
+                    $previous = $this->getMonthlySales($currentDate->copy()->subMonth());
+                    break;
+                case 'yearly':
+                    $current = $this->getYearlySales($currentDate);
+                    $previous = $this->getYearlySales($currentDate->copy()->subYear());
+                    break;
+            }
 
-        $growthRate = $this->calculateGrowthRate($current['total_sales'], $previous['total_sales']);
+            $growthRate = $this->calculateGrowthRate($current['total_sales'], $previous['total_sales']);
 
-        return response()->json([
-            'period' => $period,
-            'date' => $date,
-            'current' => $current,
-            'previous' => $previous,
-            'growth_rate' => $growthRate,
-            'trend' => $growthRate > 0 ? 'up' : ($growthRate < 0 ? 'down' : 'stable'),
-        ]);
+            return response()->json([
+                'period' => $period,
+                'date' => $date,
+                'current' => $current,
+                'previous' => $previous,
+                'growth_rate' => $growthRate,
+                'trend' => $growthRate > 0 ? 'up' : ($growthRate < 0 ? 'down' : 'stable'),
+            ]);
+        });
     }
 
     /**
@@ -53,38 +59,41 @@ class SalesAnalyticsController extends Controller
      */
     public function overview()
     {
-        $today = $this->getDailySales(now());
-        $yesterday = $this->getDailySales(now()->subDay());
-        $dailyGrowth = $this->calculateGrowthRate($today['total_sales'], $yesterday['total_sales']);
+        // Cache for 1 second - ULTRA FAST! Real-time updates without hammering database
+        return Cache::remember('sales_overview', 1, function () {
+            $today = $this->getDailySales(now());
+            $yesterday = $this->getDailySales(now()->subDay());
+            $dailyGrowth = $this->calculateGrowthRate($today['total_sales'], $yesterday['total_sales']);
 
-        $thisMonth = $this->getMonthlySales(now());
-        $lastMonth = $this->getMonthlySales(now()->subMonth());
-        $monthlyGrowth = $this->calculateGrowthRate($thisMonth['total_sales'], $lastMonth['total_sales']);
+            $thisMonth = $this->getMonthlySales(now());
+            $lastMonth = $this->getMonthlySales(now()->subMonth());
+            $monthlyGrowth = $this->calculateGrowthRate($thisMonth['total_sales'], $lastMonth['total_sales']);
 
-        $thisYear = $this->getYearlySales(now());
-        $lastYear = $this->getYearlySales(now()->subYear());
-        $yearlyGrowth = $this->calculateGrowthRate($thisYear['total_sales'], $lastYear['total_sales']);
+            $thisYear = $this->getYearlySales(now());
+            $lastYear = $this->getYearlySales(now()->subYear());
+            $yearlyGrowth = $this->calculateGrowthRate($thisYear['total_sales'], $lastYear['total_sales']);
 
-        return response()->json([
-            'daily' => [
-                'today' => $today,
-                'yesterday' => $yesterday,
-                'growth_rate' => $dailyGrowth,
-                'trend' => $dailyGrowth > 0 ? 'up' : ($dailyGrowth < 0 ? 'down' : 'stable'),
-            ],
-            'monthly' => [
-                'current' => $thisMonth,
-                'previous' => $lastMonth,
-                'growth_rate' => $monthlyGrowth,
-                'trend' => $monthlyGrowth > 0 ? 'up' : ($monthlyGrowth < 0 ? 'down' : 'stable'),
-            ],
-            'yearly' => [
-                'current' => $thisYear,
-                'previous' => $lastYear,
-                'growth_rate' => $yearlyGrowth,
-                'trend' => $yearlyGrowth > 0 ? 'up' : ($yearlyGrowth < 0 ? 'down' : 'stable'),
-            ],
-        ]);
+            return response()->json([
+                'daily' => [
+                    'today' => $today,
+                    'yesterday' => $yesterday,
+                    'growth_rate' => $dailyGrowth,
+                    'trend' => $dailyGrowth > 0 ? 'up' : ($dailyGrowth < 0 ? 'down' : 'stable'),
+                ],
+                'monthly' => [
+                    'current' => $thisMonth,
+                    'previous' => $lastMonth,
+                    'growth_rate' => $monthlyGrowth,
+                    'trend' => $monthlyGrowth > 0 ? 'up' : ($monthlyGrowth < 0 ? 'down' : 'stable'),
+                ],
+                'yearly' => [
+                    'current' => $thisYear,
+                    'previous' => $lastYear,
+                    'growth_rate' => $yearlyGrowth,
+                    'trend' => $yearlyGrowth > 0 ? 'up' : ($yearlyGrowth < 0 ? 'down' : 'stable'),
+                ],
+            ]);
+        });
     }
 
     private function getDailySales($date)
@@ -92,11 +101,12 @@ class SalesAnalyticsController extends Controller
         $startOfDay = $date->copy()->startOfDay();
         $endOfDay = $date->copy()->endOfDay();
 
-        $sales = Payment::whereBetween('payment_date', [$startOfDay, $endOfDay])
-            ->sum('amount');
+        // Sum total_amount from orders created today (regardless of status for POS)
+        $sales = Order::whereBetween('created_at', [$startOfDay, $endOfDay])
+            ->sum('total_amount');
 
-        $orders = Order::whereBetween('completed_date', [$startOfDay, $endOfDay])
-            ->where('status', 'Completed')
+        // Count UNIQUE orders created today (not order items!)
+        $orders = Order::whereBetween('created_at', [$startOfDay, $endOfDay])
             ->count();
 
         return [
@@ -111,11 +121,12 @@ class SalesAnalyticsController extends Controller
         $startOfMonth = $date->copy()->startOfMonth();
         $endOfMonth = $date->copy()->endOfMonth();
 
-        $sales = Payment::whereBetween('payment_date', [$startOfMonth, $endOfMonth])
-            ->sum('amount');
+        // Sum total_amount from orders created this month
+        $sales = Order::whereBetween('created_at', [$startOfMonth, $endOfMonth])
+            ->sum('total_amount');
 
-        $orders = Order::whereBetween('completed_date', [$startOfMonth, $endOfMonth])
-            ->where('status', 'Completed')
+        // Count UNIQUE orders created this month
+        $orders = Order::whereBetween('created_at', [$startOfMonth, $endOfMonth])
             ->count();
 
         return [
@@ -130,11 +141,12 @@ class SalesAnalyticsController extends Controller
         $startOfYear = $date->copy()->startOfYear();
         $endOfYear = $date->copy()->endOfYear();
 
-        $sales = Payment::whereBetween('payment_date', [$startOfYear, $endOfYear])
-            ->sum('amount');
+        // Sum total_amount from orders created this year
+        $sales = Order::whereBetween('created_at', [$startOfYear, $endOfYear])
+            ->sum('total_amount');
 
-        $orders = Order::whereBetween('completed_date', [$startOfYear, $endOfYear])
-            ->where('status', 'Completed')
+        // Count UNIQUE orders created this year
+        $orders = Order::whereBetween('created_at', [$startOfYear, $endOfYear])
             ->count();
 
         return [

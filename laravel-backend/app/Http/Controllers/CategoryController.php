@@ -4,16 +4,19 @@ namespace App\Http\Controllers;
 
 use App\Models\Category;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 
 class CategoryController extends Controller
 {
     /**
-     * Display a listing of the resource.
+     * Display a listing of the resource - OPTIMIZED with 1-second cache
      */
     public function index()
     {
-        $categories = Category::withCount('products')->orderBy('created_at', 'desc')->get();
-        return response()->json($categories);
+        return Cache::remember('categories_all', 1, function () {
+            $categories = Category::withCount('products')->orderBy('created_at', 'desc')->get();
+            return response()->json($categories);
+        });
     }
 
     /**

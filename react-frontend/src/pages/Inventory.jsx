@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import {
   Package,
   Search,
@@ -18,31 +19,26 @@ import {
   CalendarRange,
   ArrowRightLeft
 } from 'lucide-react';
-import toast from 'react-hot-toast';
 import ViewModal from '../components/ViewModal';
 import EditModal from '../components/EditModal';
 import Pagination from '../components/Pagination';
-import { inventoryAPI, productTransactionsAPI, ordersAPI } from '../services/api';
+import { TableSkeleton, LoadingBar } from '../components/LoadingStates';
+import { useInventory, useUpdateInventory, useRestockInventory, useDeleteInventory } from '../hooks/useInventory';
+import { productTransactionsAPI, ordersAPI } from '../services/api';
+import { queryKeys } from '../lib/queryClient';
 
 const Inventory = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
-  const [loading, setLoading] = useState(false);
   
   // Modal states
   const [viewModal, setViewModal] = useState({ isOpen: false, data: null });
   const [editModal, setEditModal] = useState({ isOpen: false, data: null });
   const [restockModal, setRestockModal] = useState({ isOpen: false, data: null });
-
-  // Data from API
-  const [inventory, setInventory] = useState([]);
   
   // Product Transactions & Growth Rates
-  const [salesHistory, setSalesHistory] = useState([]);
-  const [growthData, setGrowthData] = useState(null);
   const [selectedPeriod, setSelectedPeriod] = useState('daily');
-  const [transactionsLoading, setTransactionsLoading] = useState(false);
   
   // Pagination for growth rates table
   const [growthPage, setGrowthPage] = useState(1);
@@ -52,51 +48,37 @@ const Inventory = () => {
   const [salesPage, setSalesPage] = useState(1);
   const [salesItemsPerPage, setSalesItemsPerPage] = useState(10);
 
-  // Fetch data from API
-  useEffect(() => {
-    fetchInventory();
-    fetchSalesHistory(selectedPeriod);
-    fetchGrowthRates(selectedPeriod);
-  }, []);
+  // React Query hooks
+  const { data: inventory = [], isLoading } = useInventory();
+  const updateMutation = useUpdateInventory();
+  const restockMutation = useRestockInventory();
+  const deleteMutation = useDeleteInventory();
 
-  useEffect(() => {
-    fetchSalesHistory(selectedPeriod);
-    fetchGrowthRates(selectedPeriod);
-  }, [selectedPeriod]);
+  // Fetch sales history with React Query - REALTIME updates
+  const { data: salesHistory = [], isLoading: salesLoading } = useQuery({
+    queryKey: queryKeys.salesHistory(selectedPeriod),
+    queryFn: async () => {
+      const response = await ordersAPI.getSalesHistory({ period: selectedPeriod });
+      return response.data;
+    },
+    staleTime: 0, // Always fresh - instant updates
+    refetchInterval: 5000, // Real-time updates every 5 seconds
+    refetchOnWindowFocus: true, // Refetch when switching to this page
+    refetchIntervalInBackground: false, // Don't refetch when not visible
+  });
 
-  const fetchInventory = async () => {
-    try {
-      setLoading(true);
-      const response = await inventoryAPI.getAll();
-      setInventory(response.data);
-    } catch (error) {
-      toast.error('Failed to fetch inventory');
-      console.error('Error fetching inventory:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchSalesHistory = async (period) => {
-    try {
-      setTransactionsLoading(true);
-      const response = await ordersAPI.getSalesHistory({ period });
-      setSalesHistory(response.data);
-    } catch (error) {
-      console.error('Error fetching sales history:', error);
-    } finally {
-      setTransactionsLoading(false);
-    }
-  };
-
-  const fetchGrowthRates = async (period) => {
-    try {
-      const response = await productTransactionsAPI.getGrowthRates(period);
-      setGrowthData(response.data);
-    } catch (error) {
-      console.error('Error fetching growth rates:', error);
-    }
-  };
+  // Fetch growth rates with React Query - INSTANT updates!
+  const { data: growthData, isLoading: growthLoading } = useQuery({
+    queryKey: queryKeys.growthRates(selectedPeriod),
+    queryFn: async () => {
+      const response = await productTransactionsAPI.getGrowthRates(selectedPeriod);
+      return response.data;
+    },
+    staleTime: 0, // Always fresh - instant updates
+    refetchInterval: 5000, // Real-time updates every 5 seconds
+    refetchOnWindowFocus: true, // Refetch when switching to this page
+    refetchIntervalInBackground: false, // Don't refetch when not visible
+  });
 
   // Edit fields (no quantity - use Restock for that!)
   const inventoryEditFields = [
@@ -130,31 +112,19 @@ const Inventory = () => {
   };
 
   const handleEdit = async (formData) => {
-    try {
-      // Only update reorder settings, keep current quantity
-      const updateData = {
-        quantity: editModal.data.quantity, // Keep current quantity
-        reorder_level: formData.reorder_level,
-        reorder_quantity: formData.reorder_quantity,
-      };
-      await inventoryAPI.update(formData.inventory_id, updateData);
-      await fetchInventory();
-      toast.success('Reorder settings updated successfully!');
-    } catch (error) {
-      toast.error(error.response?.data?.message || 'Failed to update inventory');
-      console.error('Error updating inventory:', error);
-    }
+    const updateData = {
+      quantity: editModal.data.quantity,
+      reorder_level: formData.reorder_level,
+      reorder_quantity: formData.reorder_quantity,
+    };
+    updateMutation.mutate({ id: formData.inventory_id, data: updateData });
   };
 
   const handleRestock = async (formData) => {
-    try {
-      await inventoryAPI.restock(restockModal.data.inventory_id, parseInt(formData.restockQty));
-      await fetchInventory();
-      toast.success(`Restocked ${formData.restockQty} units successfully!`);
-    } catch (error) {
-      toast.error(error.response?.data?.message || 'Failed to restock');
-      console.error('Error restocking:', error);
-    }
+    restockMutation.mutate({
+      id: restockModal.data.inventory_id,
+      quantity: parseInt(formData.restockQty)
+    });
   };
 
   const openRestockModal = (item) => {
@@ -276,15 +246,12 @@ const Inventory = () => {
           </div>
         </div>
 
+        {/* NO LoadingBar - instant updates from cache */}
+        
         {/* Table */}
-        {/* Mobile Card View */}
+        {/* Mobile Card View - NO LOADING STATE, instant from cache */}
         <div className="block md:hidden p-4 space-y-4">
-          {loading ? (
-            <div className="flex justify-center items-center gap-2 py-12">
-              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-cyan-600"></div>
-              <span className="text-slate-600">Loading inventory...</span>
-            </div>
-          ) : paginatedInventory.length === 0 ? (
+          {paginatedInventory.length === 0 ? (
             <div className="text-center text-slate-500 py-12">No inventory items found</div>
           ) : (
             paginatedInventory.map((item) => (
@@ -356,16 +323,7 @@ const Inventory = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {loading ? (
-                <tr>
-                  <td colSpan="7" className="px-6 py-12 text-center">
-                    <div className="flex justify-center items-center gap-2">
-                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-cyan-600"></div>
-                      <span className="text-slate-600">Loading inventory...</span>
-                    </div>
-                  </td>
-                </tr>
-              ) : paginatedInventory.length === 0 ? (
+              {paginatedInventory.length === 0 ? (
                 <tr>
                   <td colSpan="7" className="px-6 py-12 text-center text-slate-500">
                     No inventory items found
@@ -518,7 +476,7 @@ const Inventory = () => {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-slate-200">
-              {transactionsLoading ? (
+              {growthLoading ? (
                 <tr>
                   <td colSpan="7" className="px-6 py-12 text-center">
                     <div className="flex justify-center items-center gap-2">
@@ -608,83 +566,96 @@ const Inventory = () => {
         )}
 
         {/* Sales History - Products Purchased by Customers */}
-        {salesHistory.length > 0 && (
-          <div className="mt-8">
-            <h3 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
-              <FileText className="w-5 h-5 text-cyan-600" />
-              Sales History ({selectedPeriod === 'daily' ? 'Today' : selectedPeriod === 'monthly' ? 'This Month' : 'This Year'})
-            </h3>
-            <div className="overflow-x-auto rounded-lg border border-slate-200">
-              <table className="min-w-full divide-y divide-slate-200">
-                <thead className="bg-slate-100">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase">Date & Time</th>
-                    <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase">Order #</th>
-                    <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase">Product</th>
-                    <th className="px-6 py-3 text-center text-xs font-bold text-slate-700 uppercase">Qty Sold</th>
-                    <th className="px-6 py-3 text-center text-xs font-bold text-slate-700 uppercase">Unit Price</th>
-                    <th className="px-6 py-3 text-center text-xs font-bold text-slate-700 uppercase">Subtotal</th>
-                    <th className="px-6 py-3 text-center text-xs font-bold text-slate-700 uppercase">Service</th>
-                    <th className="px-6 py-3 text-center text-xs font-bold text-slate-700 uppercase">Payment</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-slate-200">
-                  {(() => {
-                    const startIndex = (salesPage - 1) * salesItemsPerPage;
-                    const paginatedSales = salesHistory.slice(startIndex, startIndex + salesItemsPerPage);
-                    return paginatedSales.map((sale) => (
-                    <tr key={sale.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-6 py-3 whitespace-nowrap text-sm text-slate-600">
-                        {new Date(sale.created_at).toLocaleString()}
-                      </td>
-                      <td className="px-6 py-3 whitespace-nowrap text-sm font-semibold text-cyan-600">
-                        {sale.order_number}
-                      </td>
-                      <td className="px-6 py-3 whitespace-nowrap text-sm font-semibold text-slate-900">
-                        {sale.product_name}
-                      </td>
-                      <td className="px-6 py-3 whitespace-nowrap text-center">
-                        <span className="inline-flex items-center px-3 py-1 bg-rose-100 text-rose-700 text-sm font-bold rounded-lg">
-                          {sale.quantity}
-                        </span>
-                      </td>
-                      <td className="px-6 py-3 whitespace-nowrap text-center text-sm text-slate-600">
-                        ₱{parseFloat(sale.unit_price || 0).toLocaleString()}
-                      </td>
-                      <td className="px-6 py-3 whitespace-nowrap text-center text-sm font-bold text-slate-900">
-                        ₱{parseFloat(sale.subtotal || 0).toLocaleString()}
-                      </td>
-                      <td className="px-6 py-3 whitespace-nowrap text-center">
-                        <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-purple-100 text-purple-700">
-                          {sale.service_type}
-                        </span>
-                      </td>
-                      <td className="px-6 py-3 whitespace-nowrap text-center">
-                        <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-teal-100 text-teal-700">
-                          {sale.payment_method}
-                        </span>
-                      </td>
+        <div className="mt-8">
+          <h3 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
+            <FileText className="w-5 h-5 text-cyan-600" />
+            Sales History ({selectedPeriod === 'daily' ? 'Today' : selectedPeriod === 'monthly' ? 'This Month' : 'This Year'})
+          </h3>
+          {salesLoading ? (
+            <TableSkeleton />
+          ) : (
+            <>
+              <div className="overflow-x-auto rounded-lg border border-slate-200">
+                <table className="min-w-full divide-y divide-slate-200">
+                  <thead className="bg-slate-100">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase">Date & Time</th>
+                      <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase">Order #</th>
+                      <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase">Product</th>
+                      <th className="px-6 py-3 text-center text-xs font-bold text-slate-700 uppercase">Qty Sold</th>
+                      <th className="px-6 py-3 text-center text-xs font-bold text-slate-700 uppercase">Unit Price</th>
+                      <th className="px-6 py-3 text-center text-xs font-bold text-slate-700 uppercase">Subtotal</th>
+                      <th className="px-6 py-3 text-center text-xs font-bold text-slate-700 uppercase">Service</th>
+                      <th className="px-6 py-3 text-center text-xs font-bold text-slate-700 uppercase">Payment</th>
                     </tr>
-                    ));
-                  })()}
-                </tbody>
-              </table>
-            </div>
-            
-            {/* Pagination for Sales History */}
-            <Pagination
-              currentPage={salesPage}
-              totalPages={Math.ceil(salesHistory.length / salesItemsPerPage)}
-              totalItems={salesHistory.length}
-              itemsPerPage={salesItemsPerPage}
-              onPageChange={setSalesPage}
-              onItemsPerPageChange={(value) => {
-                setSalesItemsPerPage(value);
-                setSalesPage(1);
-              }}
-            />
-          </div>
-        )}
+                  </thead>
+                  <tbody className="bg-white divide-y divide-slate-200">
+                    {salesHistory.length === 0 ? (
+                      <tr>
+                        <td colSpan="8" className="px-6 py-8 text-center text-slate-500">
+                          No sales recorded for this period
+                        </td>
+                      </tr>
+                    ) : (
+                      (() => {
+                        const startIndex = (salesPage - 1) * salesItemsPerPage;
+                        const paginatedSales = salesHistory.slice(startIndex, startIndex + salesItemsPerPage);
+                        return paginatedSales.map((sale) => (
+                        <tr key={sale.id} className="hover:bg-slate-50 transition-colors">
+                          <td className="px-6 py-3 whitespace-nowrap text-sm text-slate-600">
+                            {new Date(sale.created_at).toLocaleString()}
+                          </td>
+                          <td className="px-6 py-3 whitespace-nowrap text-sm font-semibold text-cyan-600">
+                            {sale.order_number}
+                          </td>
+                          <td className="px-6 py-3 whitespace-nowrap text-sm font-semibold text-slate-900">
+                            {sale.product_name}
+                          </td>
+                          <td className="px-6 py-3 whitespace-nowrap text-center">
+                            <span className="inline-flex items-center px-3 py-1 bg-rose-100 text-rose-700 text-sm font-bold rounded-lg">
+                              {sale.quantity}
+                            </span>
+                          </td>
+                          <td className="px-6 py-3 whitespace-nowrap text-center text-sm text-slate-600">
+                            ₱{parseFloat(sale.unit_price || 0).toLocaleString()}
+                          </td>
+                          <td className="px-6 py-3 whitespace-nowrap text-center text-sm font-bold text-slate-900">
+                            ₱{parseFloat(sale.subtotal || 0).toLocaleString()}
+                          </td>
+                          <td className="px-6 py-3 whitespace-nowrap text-center">
+                            <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-purple-100 text-purple-700">
+                              {sale.service_type}
+                            </span>
+                          </td>
+                          <td className="px-6 py-3 whitespace-nowrap text-center">
+                            <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-teal-100 text-teal-700">
+                              {sale.payment_method}
+                            </span>
+                          </td>
+                        </tr>
+                        ));
+                      })()
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              
+              {salesHistory.length > 0 && (
+                <Pagination
+                  currentPage={salesPage}
+                  totalPages={Math.ceil(salesHistory.length / salesItemsPerPage)}
+                  totalItems={salesHistory.length}
+                  itemsPerPage={salesItemsPerPage}
+                  onPageChange={setSalesPage}
+                  onItemsPerPageChange={(value) => {
+                    setSalesItemsPerPage(value);
+                    setSalesPage(1);
+                  }}
+                />
+              )}
+            </>
+          )}
+        </div>
       </div>
 
       {/* Modals */}

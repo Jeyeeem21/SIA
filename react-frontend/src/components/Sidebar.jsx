@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { usePrefetch } from '../hooks/usePrefetch';
 import {
   ChevronLeft,
   ChevronRight,
@@ -28,6 +29,18 @@ const Sidebar = () => {
   const [showProductsSubmenu, setShowProductsSubmenu] = useState(false);
   const location = useLocation();
   const userMenuRef = useRef(null);
+  
+  // Prefetch hook for instant navigation
+  const { 
+    prefetchDashboard, 
+    prefetchProducts, 
+    prefetchInventory, 
+    prefetchOrders, 
+    prefetchCategories,
+    prefetchStaff,
+    prefetchRentals,
+    prefetchReports
+  } = usePrefetch();
 
   // Get user initials
   const getUserInitials = () => {
@@ -147,6 +160,16 @@ const Sidebar = () => {
                           setShowProductsSubmenu(true);
                         }
                       }}
+                      onMouseEnter={() => {
+                        // Prefetch data on hover for instant navigation
+                        if (item.path === '/dashboard') prefetchDashboard();
+                        else if (item.path === '/products') prefetchProducts();
+                        else if (item.path === '/inventory') prefetchInventory();
+                        else if (item.path === '/orders') prefetchOrders();
+                        else if (item.path === '/staff') prefetchStaff();
+                        else if (item.path === '/rentals') prefetchRentals();
+                        else if (item.path === '/reports') prefetchReports();
+                      }}
                       className={`group relative flex items-center flex-1 px-4 py-3.5 rounded-xl transition-all duration-200 ${
                         active
                           ? 'bg-gradient-to-r from-cyan-600 to-teal-600 text-white shadow-lg shadow-cyan-500/30 scale-105'
@@ -208,6 +231,11 @@ const Sidebar = () => {
                           <li key={subItem.path}>
                             <Link
                               to={subItem.path}
+                              onMouseEnter={() => {
+                                // Prefetch submenu data on hover
+                                if (subItem.path === '/products') prefetchProducts();
+                                else if (subItem.path === '/categories') prefetchCategories();
+                              }}
                               className={`group relative flex items-center px-3 py-2.5 rounded-lg transition-all duration-200 ${
                                 subActive
                                   ? 'bg-gradient-to-r from-teal-600 to-cyan-600 text-white shadow-md'

@@ -21,6 +21,16 @@ const EditModal = ({ isOpen, onClose, title, fields, data, onSubmit }) => {
     }
   };
 
+  const handleFileChange = (key, file) => {
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setFormData(prev => ({ ...prev, [key]: reader.result }));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
     
@@ -79,12 +89,32 @@ const EditModal = ({ isOpen, onClose, title, fields, data, onSubmit }) => {
                   } ${field.disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                   placeholder={field.placeholder}
                 />
+              ) : field.type === 'file' ? (
+                <div>
+                  <input
+                    type="file"
+                    accept={field.accept || 'image/*'}
+                    onChange={(e) => handleFileChange(field.key, e.target.files[0])}
+                    disabled={field.disabled}
+                    className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent ${
+                      errors[field.key] ? 'border-red-500' : 'border-gray-300'
+                    } ${field.disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                  />
+                  {formData[field.key] && (
+                    <div className="mt-2">
+                      <img src={formData[field.key]} alt="Preview" className="h-32 w-32 object-cover rounded-lg border border-gray-300" />
+                    </div>
+                  )}
+                </div>
               ) : (
                 <input
                   type={field.type || 'text'}
                   value={formData[field.key] || ''}
                   onChange={(e) => handleChange(field.key, e.target.value)}
                   disabled={field.disabled}
+                  step={field.step}
+                  min={field.min}
+                  max={field.max}
                   className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent ${
                     errors[field.key] ? 'border-red-500' : 'border-gray-300'
                   } ${field.disabled ? 'bg-gray-100 cursor-not-allowed' : ''}`}

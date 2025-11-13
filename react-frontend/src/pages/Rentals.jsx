@@ -75,7 +75,8 @@
  * Next Steps: Connect to Laravel backend API (rentalsAPI)
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import {
   Building2,
   Users,
@@ -102,23 +103,166 @@ import { rentalsAPI } from '../services/api';
 import Pagination from '../components/Pagination';
 import Modal from '../components/Modal';
 import ConfirmModal from '../components/ConfirmModal';
+import PageLoadingSpinner from '../components/PageLoadingSpinner';
 
 const Rentals = () => {
+  const queryClient = useQueryClient();
+  
   // State Management
   const [activeTab, setActiveTab] = useState('properties'); // 'properties', 'tenants', 'contracts', 'payments', 'maintenance'
-  const [loading, setLoading] = useState(true); // Initial page load
-  const [tableLoading, setTableLoading] = useState(false); // Table reload only
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('All');
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
 
-  // Data States
-  const [properties, setProperties] = useState([]);
-  const [tenants, setTenants] = useState([]);
-  const [contracts, setContracts] = useState([]);
-  const [payments, setPayments] = useState([]);
-  const [maintenanceRequests, setMaintenanceRequests] = useState([]);
+  // React Query - Fetch all rental data with 1-second real-time updates
+  const { data: properties = [], isLoading: propertiesLoading } = useQuery({
+    queryKey: ['rental-properties'],
+    queryFn: async () => {
+      const response = await rentalsAPI.getProperties();
+      return response.data;
+    },
+  });
+
+  const { data: tenants = [], isLoading: tenantsLoading } = useQuery({
+    queryKey: ['rental-tenants'],
+    queryFn: async () => {
+      const response = await rentalsAPI.getTenants();
+      return response.data;
+    },
+  });
+
+  const { data: contracts = [], isLoading: contractsLoading } = useQuery({
+    queryKey: ['rental-contracts'],
+    queryFn: async () => {
+      const response = await rentalsAPI.getContracts();
+      return response.data;
+    },
+  });
+
+  const { data: payments = [], isLoading: paymentsLoading } = useQuery({
+    queryKey: ['rental-payments'],
+    queryFn: async () => {
+      const response = await rentalsAPI.getPayments();
+      return response.data;
+    },
+  });
+
+  const { data: maintenanceRequests = [], isLoading: maintenanceLoading } = useQuery({
+    queryKey: ['rental-maintenance'],
+    queryFn: async () => {
+      const response = await rentalsAPI.getMaintenanceRequests();
+      return response.data;
+    },
+  });
+
+  // Check if initial data is loading
+  const loading = propertiesLoading && tenantsLoading && contractsLoading && paymentsLoading && maintenanceLoading;
+
+  // Memoize stall numbers for instant duplicate checking
+  const stallNumbersMap = useMemo(() => {
+    const map = new Map();
+    properties.forEach(property => {
+      if (property.stall_number) {
+        map.set(property.stall_number.toLowerCase().trim(), property.id);
+      }
+    });
+    return map;
+  }, [properties]);
+
+  // Mutations for instant updates (optimistic)
+  const createPropertyMutation = useMutation({
+    mutationFn: (data) => rentalsAPI.createProperty(data),
+    onMutate: async (data) => {
+      // Cancel any outgoing refetches
+      await queryClient.cancelQueries(['rental-properties']);
+      
+      // Snapshot the previous value
+      const previousProperties = queryClient.getQueryData(['rental-properties']);
+      
+      // Optimistically add to the list with temporary ID
+      const tempProperty = {
+        id: Date.now(),
+        ...data,
+        monthlyRate: parseFloat(data.monthly_rate),
+        tenant: null,
+        contractEnd: null,
+      };
+      
+      queryClient.setQueryData(['rental-properties'], (old) => [...old, tempProperty]);
+      
+      return { previousProperties };
+    },
+    onError: (err, variables, context) => {
+      // Rollback on error
+      queryClient.setQueryData(['rental-properties'], context.previousProperties);
+      
+      // Show specific error messages
+      if (err.response?.data?.errors) {
+        const errors = err.response.data.errors;
+        Object.keys(errors).forEach((field) => {
+          errors[field].forEach((message) => {
+            toast.error(message);
+          });
+        });
+      } else {
+        const errorMessage = err.response?.data?.message || 'Failed to create property';
+        toast.error(errorMessage);
+      }
+    },
+    onSuccess: () => {
+      toast.success('Property created successfully!');
+    },
+    onSettled: () => {
+      // Refetch to get real ID from database
+      queryClient.invalidateQueries(['rental-properties']);
+    },
+  });
+
+  const updatePropertyMutation = useMutation({
+    mutationFn: ({ id, data }) => rentalsAPI.updateProperty(id, data),
+    onMutate: async ({ id, data }) => {
+      // Cancel any outgoing refetches
+      await queryClient.cancelQueries(['rental-properties']);
+      
+      // Snapshot the previous value
+      const previousProperties = queryClient.getQueryData(['rental-properties']);
+      
+      // Optimistically update to the new value
+      queryClient.setQueryData(['rental-properties'], (old) =>
+        old.map((property) =>
+          property.id === id ? { ...property, ...data, monthlyRate: parseFloat(data.monthly_rate) } : property
+        )
+      );
+      
+      return { previousProperties };
+    },
+    onError: (err, variables, context) => {
+      // Rollback on error
+      queryClient.setQueryData(['rental-properties'], context.previousProperties);
+      
+      // Show specific error messages
+      if (err.response?.data?.errors) {
+        const errors = err.response.data.errors;
+        // Show validation errors
+        Object.keys(errors).forEach((field) => {
+          errors[field].forEach((message) => {
+            toast.error(message);
+          });
+        });
+      } else {
+        const errorMessage = err.response?.data?.message || 'Failed to update property';
+        toast.error(errorMessage);
+      }
+    },
+    onSuccess: () => {
+      toast.success('Property updated successfully!');
+    },
+    onSettled: () => {
+      // Refetch to ensure data is in sync
+      queryClient.invalidateQueries(['rental-properties']);
+    },
+  });
 
   // Modal States
   const [showPropertyModal, setShowPropertyModal] = useState(false);
@@ -126,6 +270,11 @@ const Rentals = () => {
   const [showContractModal, setShowContractModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showMaintenanceModal, setShowMaintenanceModal] = useState(false);
+  
+  // Stall Number Validation States
+  const [stallNumberInput, setStallNumberInput] = useState('');
+  const [stallNumberError, setStallNumberError] = useState('');
+  const [isCheckingStallNumber, setIsCheckingStallNumber] = useState(false);
   
   // View Details Modal
   const [showDetailsModal, setShowDetailsModal] = useState(false);
@@ -177,7 +326,39 @@ const Rentals = () => {
     setShowDetailsModal(true);
   };
 
-  // Reset form states when modals close
+  // Real-time stall number validation with debouncing
+  useEffect(() => {
+    if (!stallNumberInput || stallNumberInput.trim() === '') {
+      setStallNumberError('');
+      return;
+    }
+
+    const timeoutId = setTimeout(() => {
+      // Use memoized map for INSTANT duplicate checking
+      const normalizedInput = stallNumberInput.toLowerCase().trim();
+      const existingPropertyId = stallNumbersMap.get(normalizedInput);
+      
+      // Check if duplicate (and not the current property being edited)
+      const isDuplicate = existingPropertyId && existingPropertyId !== editingItem?.id;
+
+      if (isDuplicate) {
+        setStallNumberError('This stall number is already taken. Please use a different stall number.');
+      } else {
+        setStallNumberError('');
+      }
+    }, 100); // 100ms debounce - ULTRA FAST!
+
+    return () => clearTimeout(timeoutId);
+  }, [stallNumberInput, stallNumbersMap, editingItem]);
+
+  // Reset stall number validation when modals close
+  useEffect(() => {
+    if (!showPropertyModal && !showEditPropertyModal) {
+      setStallNumberInput('');
+      setStallNumberError('');
+    }
+  }, [showPropertyModal, showEditPropertyModal]);
+
   useEffect(() => {
     if (!showContractModal) {
       setSelectedContractProperty('');
@@ -191,117 +372,6 @@ const Rentals = () => {
       setSelectedPaymentProperty('');
     }
   }, [showPaymentModal]);
-
-  // Initial load - fetch all data once
-  useEffect(() => {
-    fetchAllData();
-  }, []);
-
-  // Fetch all data (charts + table) - only on initial load
-  const fetchAllData = async () => {
-    console.log('Starting fetchAllData...');
-    setLoading(true);
-    try {
-      // Fetch all data from API
-      console.log('Making API calls...');
-      const [propertiesRes, tenantsRes, contractsRes, paymentsRes, maintenanceRes] = await Promise.all([
-        rentalsAPI.getProperties(),
-        rentalsAPI.getTenants(),
-        rentalsAPI.getContracts(),
-        rentalsAPI.getPayments(),
-        rentalsAPI.getMaintenanceRequests()
-      ]);
-
-      console.log('API calls completed:', {
-        properties: propertiesRes.data?.length || 0,
-        tenants: tenantsRes.data?.length || 0,
-        contracts: contractsRes.data?.length || 0,
-        payments: paymentsRes.data?.length || 0,
-        maintenance: maintenanceRes.data?.length || 0
-      });
-
-      setProperties(propertiesRes.data || []);
-      setTenants(tenantsRes.data || []);
-      setContracts(contractsRes.data || []);
-      setPayments(paymentsRes.data || []);
-      setMaintenanceRequests(maintenanceRes.data || []);
-      
-      console.log('Data set successfully');
-    } catch (error) {
-      console.error('Error fetching rental data:', error);
-      toast.error('Failed to load rental data from API. Using demo data.');
-      
-      // Fallback to demo data
-      setProperties([
-        { id: 1, name: 'School Canteen', type: 'Commercial', location: 'Ground Floor', size: '150 sqm', monthlyRate: 15000, status: 'Occupied', tenant: 'Maria Santos', contractEnd: '2025-12-31' },
-        { id: 2, name: 'Photocopy Center', type: 'Commercial', location: '2nd Floor', size: '50 sqm', monthlyRate: 8000, status: 'Occupied', tenant: 'Juan dela Cruz', contractEnd: '2025-10-15' },
-        { id: 3, name: 'Bookstore', type: 'Commercial', location: '3rd Floor', size: '80 sqm', monthlyRate: 12000, status: 'Vacant', tenant: null, contractEnd: null },
-        { id: 4, name: 'Parking Space A', type: 'Commercial', location: 'Basement', size: '20 sqm', monthlyRate: 3000, status: 'Occupied', tenant: 'Pedro Garcia', contractEnd: '2025-11-30' },
-        { id: 5, name: 'Boarding House', type: 'Residential', location: 'Annex Building', size: '200 sqm', monthlyRate: 25000, status: 'Under Maintenance', tenant: null, contractEnd: null }
-      ]);
-      
-      setTenants([
-        { id: 1, name: 'Maria Santos', businessName: 'Santos Canteen Services', contactNumber: '09123456789', email: 'maria@santos.com', propertyRented: 'School Canteen', contractStatus: 'Active', depositPaid: 15000, lastPayment: '2025-11-01' },
-        { id: 2, name: 'Juan dela Cruz', businessName: 'Juan Photocopy', contactNumber: '09198765432', email: 'juan@photocopy.com', propertyRented: 'Photocopy Center', contractStatus: 'Active', depositPaid: 8000, lastPayment: '2025-11-01' },
-        { id: 3, name: 'Pedro Garcia', businessName: 'Garcia Parking', contactNumber: '09234567890', email: 'pedro@garcia.com', propertyRented: 'Parking Space A', contractStatus: 'Active', depositPaid: 3000, lastPayment: '2025-10-15' }
-      ]);
-      
-      setContracts([
-        { id: 1, property: 'School Canteen', tenant: 'Maria Santos', startDate: '2025-01-01', endDate: '2025-12-31', monthlyRent: 15000, deposit: 15000, status: 'Active' },
-        { id: 2, property: 'Photocopy Center', tenant: 'Juan dela Cruz', startDate: '2025-01-01', endDate: '2025-12-31', monthlyRent: 8000, deposit: 8000, status: 'Active' },
-        { id: 3, property: 'Parking Space A', tenant: 'Pedro Garcia', startDate: '2025-01-01', endDate: '2025-12-31', monthlyRent: 3000, deposit: 3000, status: 'Active' }
-      ]);
-      
-      setPayments([
-        { id: 1, tenant: 'Maria Santos', property: 'School Canteen', amount: 15000, dueDate: '2025-11-01', paymentDate: '2025-11-01', status: 'Paid', method: 'Bank Transfer' },
-        { id: 2, tenant: 'Juan dela Cruz', property: 'Photocopy Center', amount: 8000, dueDate: '2025-11-01', paymentDate: '2025-11-01', status: 'Paid', method: 'GCash' },
-        { id: 3, tenant: 'Pedro Garcia', property: 'Parking Space A', amount: 3000, dueDate: '2025-11-01', paymentDate: null, status: 'Pending', method: null }
-      ]);
-      
-      setMaintenanceRequests([
-        { id: 1, requestNumber: 'MNT-2025-001', property: 'Boarding House', tenant: 'N/A', description: 'Leaking roof in room 5', priority: 'High', status: 'Pending', requestDate: '2025-11-01', assignedTo: null },
-        { id: 2, requestNumber: 'MNT-2025-002', property: 'School Canteen', tenant: 'Maria Santos', description: 'Air conditioning not working', priority: 'Medium', status: 'In Progress', requestDate: '2025-10-28', assignedTo: 'Maintenance Team' }
-      ]);
-    } finally {
-      console.log('Setting loading to false');
-      setLoading(false);
-    }
-  };
-
-  // Fetch only table data - for tab changes (no loading screen, just table update)
-  const fetchTableData = async () => {
-    setTableLoading(true);
-    try {
-      // Fetch data based on active tab
-      switch (activeTab) {
-        case 'properties':
-          const propertiesRes = await rentalsAPI.getProperties();
-          setProperties(propertiesRes.data);
-          break;
-        case 'tenants':
-          const tenantsRes = await rentalsAPI.getTenants();
-          setTenants(tenantsRes.data);
-          break;
-        case 'contracts':
-          const contractsRes = await rentalsAPI.getContracts();
-          setContracts(contractsRes.data);
-          break;
-        case 'payments':
-          const paymentsRes = await rentalsAPI.getPayments();
-          setPayments(paymentsRes.data);
-          break;
-        case 'maintenance':
-          const maintenanceRes = await rentalsAPI.getMaintenanceRequests();
-          setMaintenanceRequests(maintenanceRes.data);
-          break;
-      }
-    } catch (error) {
-      console.error('Error fetching table data:', error);
-      toast.error('Failed to load data');
-    } finally {
-      setTableLoading(false);
-    }
-  };
 
   // Get status color
   const getStatusColor = (status) => {
@@ -403,39 +473,30 @@ const Rentals = () => {
 
   // Property CRUD Handlers
   const handleCreateProperty = async (formData) => {
-    try {
-      await rentalsAPI.createProperty(formData);
-      toast.success('Property created successfully!');
-      setShowPropertyModal(false);
-      fetchTableData(); // Only reload the table
-    } catch (error) {
-      console.error('Error creating property:', error);
-      const errorMessage = error.response?.data?.message || 'Failed to create property';
-      toast.error(errorMessage);
-    }
+    setShowPropertyModal(false);
+    
+    // Use mutation for instant optimistic create
+    createPropertyMutation.mutate(formData);
   };
 
   const handleEditProperty = async (formData) => {
-    try {
-      await rentalsAPI.updateProperty(editingItem.id, formData);
-      toast.success('Property updated successfully!');
-      setShowEditPropertyModal(false);
-      setEditingItem(null);
-      fetchTableData(); // Only reload the table
-    } catch (error) {
-      console.error('Error updating property:', error);
-      const errorMessage = error.response?.data?.message || 'Failed to update property';
-      toast.error(errorMessage);
-    }
+    const propertyId = editingItem.id;
+    setShowEditPropertyModal(false);
+    setEditingItem(null);
+    
+    // Use mutation for instant optimistic update
+    updatePropertyMutation.mutate({ id: propertyId, data: formData });
   };
 
   const handleDeleteProperty = async () => {
+    const propertyId = editingItem.id;
+    setShowDeletePropertyModal(false);
+    setEditingItem(null);
+    
     try {
-      await rentalsAPI.deleteProperty(editingItem.id);
+      await rentalsAPI.deleteProperty(propertyId);
       toast.success('Property deleted successfully!');
-      setShowDeletePropertyModal(false);
-      setEditingItem(null);
-      fetchTableData(); // Only reload the table
+      queryClient.invalidateQueries(['rental-properties']);
     } catch (error) {
       console.error('Error deleting property:', error);
       const errorMessage = error.response?.data?.message || 'Failed to delete property';
@@ -445,12 +506,13 @@ const Rentals = () => {
 
   // Tenant CRUD Handlers
   const handleCreateTenant = async (formData) => {
+    setShowTenantModal(false);
+    
     try {
       console.log('Creating tenant with data:', formData);
       await rentalsAPI.createTenant(formData);
       toast.success('Tenant created successfully!');
-      setShowTenantModal(false);
-      fetchTableData(); // Only reload the table
+      queryClient.invalidateQueries(['rental-tenants']);
     } catch (error) {
       console.error('Error creating tenant:', error);
       console.error('Error response:', error.response?.data);
@@ -465,12 +527,14 @@ const Rentals = () => {
   };
 
   const handleEditTenant = async (formData) => {
+    const tenantId = editingItem.id;
+    setShowEditTenantModal(false);
+    setEditingItem(null);
+    
     try {
-      await rentalsAPI.updateTenant(editingItem.id, formData);
+      await rentalsAPI.updateTenant(tenantId, formData);
       toast.success('Tenant updated successfully!');
-      setShowEditTenantModal(false);
-      setEditingItem(null);
-      fetchTableData(); // Only reload the table
+      queryClient.invalidateQueries(['rental-tenants']);
     } catch (error) {
       console.error('Error updating tenant:', error);
       const errorMessage = error.response?.data?.message || 'Failed to update tenant';
@@ -479,12 +543,14 @@ const Rentals = () => {
   };
 
   const handleDeleteTenant = async () => {
+    const tenantId = editingItem.id;
+    setShowDeleteTenantModal(false);
+    setEditingItem(null);
+    
     try {
-      await rentalsAPI.deleteTenant(editingItem.id);
+      await rentalsAPI.deleteTenant(tenantId);
       toast.success('Tenant deleted successfully!');
-      setShowDeleteTenantModal(false);
-      setEditingItem(null);
-      fetchTableData(); // Only reload the table
+      queryClient.invalidateQueries(['rental-tenants']);
     } catch (error) {
       console.error('Error deleting tenant:', error);
       const errorMessage = error.response?.data?.message || 'Failed to delete tenant';
@@ -494,12 +560,13 @@ const Rentals = () => {
 
   // Contract CRUD Handlers
   const handleCreateContract = async (formData) => {
+    setShowContractModal(false); // Close modal immediately
+    
     try {
       console.log('Sending contract data:', formData);
       await rentalsAPI.createContract(formData);
       toast.success('Contract created successfully!');
-      setShowContractModal(false);
-      fetchTableData(); // Only reload the table
+      queryClient.invalidateQueries(['rental-properties', 'rental-tenants', 'rental-contracts', 'rental-payments', 'rental-maintenance']);
     } catch (error) {
       console.error('Error creating contract:', error);
       console.error('Error response:', error.response?.data);
@@ -509,12 +576,14 @@ const Rentals = () => {
   };
 
   const handleEditContract = async (formData) => {
+    const contractId = editingItem.id;
+    setShowEditContractModal(false); // Close modal immediately
+    setEditingItem(null);
+    
     try {
-      await rentalsAPI.updateContract(editingItem.id, formData);
+      await rentalsAPI.updateContract(contractId, formData);
       toast.success('Contract updated successfully!');
-      setShowEditContractModal(false);
-      setEditingItem(null);
-      fetchTableData(); // Only reload the table
+      queryClient.invalidateQueries(['rental-properties', 'rental-tenants', 'rental-contracts', 'rental-payments', 'rental-maintenance']);
     } catch (error) {
       console.error('Error updating contract:', error);
       const errorMessage = error.response?.data?.message || 'Failed to update contract';
@@ -523,12 +592,14 @@ const Rentals = () => {
   };
 
   const handleDeleteContract = async () => {
+    const contractId = editingItem.id;
+    setShowDeleteContractModal(false); // Close modal immediately
+    setEditingItem(null);
+    
     try {
-      await rentalsAPI.deleteContract(editingItem.id);
+      await rentalsAPI.deleteContract(contractId);
       toast.success('Contract deleted successfully!');
-      setShowDeleteContractModal(false);
-      setEditingItem(null);
-      fetchTableData(); // Only reload the table
+      queryClient.invalidateQueries(['rental-properties', 'rental-tenants', 'rental-contracts', 'rental-payments', 'rental-maintenance']);
     } catch (error) {
       console.error('Error deleting contract:', error);
       const errorMessage = error.response?.data?.message || 'Failed to delete contract';
@@ -538,11 +609,12 @@ const Rentals = () => {
 
   // Payment CRUD Handlers
   const handleCreatePayment = async (formData) => {
+    setShowPaymentModal(false); // Close modal immediately
+    
     try {
       await rentalsAPI.createPayment(formData);
       toast.success('Payment created successfully!');
-      setShowPaymentModal(false);
-      fetchTableData(); // Only reload the table
+      queryClient.invalidateQueries(['rental-properties', 'rental-tenants', 'rental-contracts', 'rental-payments', 'rental-maintenance']);
     } catch (error) {
       console.error('Error creating payment:', error);
       const errorMessage = error.response?.data?.message || 'Failed to create payment';
@@ -551,12 +623,14 @@ const Rentals = () => {
   };
 
   const handleEditPayment = async (formData) => {
+    const paymentId = editingItem.id;
+    setShowEditPaymentModal(false); // Close modal immediately
+    setEditingItem(null);
+    
     try {
-      await rentalsAPI.updatePayment(editingItem.id, formData);
+      await rentalsAPI.updatePayment(paymentId, formData);
       toast.success('Payment updated successfully!');
-      setShowEditPaymentModal(false);
-      setEditingItem(null);
-      fetchTableData(); // Only reload the table
+      queryClient.invalidateQueries(['rental-properties', 'rental-tenants', 'rental-contracts', 'rental-payments', 'rental-maintenance']);
     } catch (error) {
       console.error('Error updating payment:', error);
       const errorMessage = error.response?.data?.message || 'Failed to update payment';
@@ -565,12 +639,14 @@ const Rentals = () => {
   };
 
   const handleDeletePayment = async () => {
+    const paymentId = editingItem.id;
+    setShowDeletePaymentModal(false); // Close modal immediately
+    setEditingItem(null);
+    
     try {
-      await rentalsAPI.deletePayment(editingItem.id);
+      await rentalsAPI.deletePayment(paymentId);
       toast.success('Payment deleted successfully!');
-      setShowDeletePaymentModal(false);
-      setEditingItem(null);
-      fetchTableData(); // Only reload the table
+      queryClient.invalidateQueries(['rental-properties', 'rental-tenants', 'rental-contracts', 'rental-payments', 'rental-maintenance']);
     } catch (error) {
       console.error('Error deleting payment:', error);
       const errorMessage = error.response?.data?.message || 'Failed to delete payment';
@@ -580,11 +656,12 @@ const Rentals = () => {
 
   // Maintenance CRUD Handlers
   const handleCreateMaintenance = async (formData) => {
+    setShowMaintenanceModal(false); // Close modal immediately
+    
     try {
       await rentalsAPI.createMaintenanceRequest(formData);
       toast.success('Maintenance request created successfully!');
-      setShowMaintenanceModal(false);
-      fetchTableData(); // Only reload the table
+      queryClient.invalidateQueries(['rental-properties', 'rental-tenants', 'rental-contracts', 'rental-payments', 'rental-maintenance']);
     } catch (error) {
       console.error('Error creating maintenance request:', error);
       const errorMessage = error.response?.data?.message || 'Failed to create maintenance request';
@@ -593,12 +670,14 @@ const Rentals = () => {
   };
 
   const handleEditMaintenance = async (formData) => {
+    const maintenanceId = editingItem.id;
+    setShowEditMaintenanceModal(false); // Close modal immediately
+    setEditingItem(null);
+    
     try {
-      await rentalsAPI.updateMaintenanceRequest(editingItem.id, formData);
+      await rentalsAPI.updateMaintenanceRequest(maintenanceId, formData);
       toast.success('Maintenance request updated successfully!');
-      setShowEditMaintenanceModal(false);
-      setEditingItem(null);
-      fetchTableData(); // Only reload the table
+      queryClient.invalidateQueries(['rental-properties', 'rental-tenants', 'rental-contracts', 'rental-payments', 'rental-maintenance']);
     } catch (error) {
       console.error('Error updating maintenance request:', error);
       const errorMessage = error.response?.data?.message || 'Failed to update maintenance request';
@@ -607,12 +686,14 @@ const Rentals = () => {
   };
 
   const handleDeleteMaintenance = async () => {
+    const maintenanceId = editingItem.id;
+    setShowDeleteMaintenanceModal(false); // Close modal immediately
+    setEditingItem(null);
+    
     try {
-      await rentalsAPI.deleteMaintenanceRequest(editingItem.id);
+      await rentalsAPI.deleteMaintenanceRequest(maintenanceId);
       toast.success('Maintenance request deleted successfully!');
-      setShowDeleteMaintenanceModal(false);
-      setEditingItem(null);
-      fetchTableData(); // Only reload the table
+      queryClient.invalidateQueries(['rental-properties', 'rental-tenants', 'rental-contracts', 'rental-payments', 'rental-maintenance']);
     } catch (error) {
       console.error('Error deleting maintenance request:', error);
       const errorMessage = error.response?.data?.message || 'Failed to delete maintenance request';
@@ -623,10 +704,7 @@ const Rentals = () => {
   if (loading) {
     return (
       <div className="p-8 flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-cyan-600 mx-auto"></div>
-          <p className="mt-4 text-slate-600">Loading rental data...</p>
-        </div>
+        <PageLoadingSpinner message="Loading rental data..." />
       </div>
     );
   }
@@ -641,47 +719,110 @@ const Rentals = () => {
         <p className="text-slate-600">Manage school properties, tenants, contracts, and rental payments</p>
       </div>
 
-      {/* Statistics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-        <div className="bg-white rounded-2xl shadow-lg p-6 border border-cyan-200">
-          <div className="flex items-center justify-between mb-2">
-            <Building2 className="w-8 h-8 text-cyan-600" />
-            <span className="text-sm font-semibold text-cyan-700">Properties</span>
-          </div>
-          <div className="text-3xl font-bold text-cyan-900">{stats.totalProperties}</div>
-          <div className="text-sm text-slate-500 mt-1">
-            {stats.occupiedProperties} Occupied • {stats.vacantProperties} Vacant
+      {/* Analytics Cards with Hover Effects */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        {/* Total Properties Card */}
+        <div className="group relative bg-white rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 hover:-translate-y-2 cursor-pointer overflow-hidden border border-slate-100">
+          <div className="absolute inset-0 bg-gradient-to-br from-cyan-500 to-teal-600 opacity-0 group-hover:opacity-5 transition-opacity duration-300"></div>
+          <div className="relative">
+            <div className="flex items-center justify-between mb-4">
+              <div className="bg-cyan-50 p-4 rounded-xl group-hover:scale-110 transition-transform duration-300">
+                <Building2 className="w-7 h-7 text-cyan-600" />
+              </div>
+              <div className="flex items-center gap-1 text-sm font-bold px-3 py-1 rounded-full bg-cyan-100 text-cyan-600">
+                {Math.round((stats.occupiedProperties / stats.totalProperties) * 100) || 0}%
+              </div>
+            </div>
+            <h3 className="text-slate-500 text-sm font-semibold uppercase tracking-wider mb-1">Total Properties</h3>
+            <p className="text-3xl font-bold text-slate-900 group-hover:scale-105 transition-transform duration-300">
+              {stats.totalProperties}
+            </p>
+            <div className="text-sm text-slate-500 mt-2 flex items-center gap-2">
+              <span className="flex items-center gap-1">
+                <CheckCircle className="w-4 h-4 text-teal-600" />
+                {stats.occupiedProperties} Occupied
+              </span>
+              <span className="text-slate-300">•</span>
+              <span className="flex items-center gap-1">
+                <XCircle className="w-4 h-4 text-slate-400" />
+                {stats.vacantProperties} Vacant
+              </span>
+            </div>
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl shadow-lg p-6 border border-teal-200">
-          <div className="flex items-center justify-between mb-2">
-            <Users className="w-8 h-8 text-teal-600" />
-            <span className="text-sm font-semibold text-teal-700">Tenants</span>
-          </div>
-          <div className="text-3xl font-bold text-teal-900">{stats.totalTenants}</div>
-          <div className="text-sm text-slate-500 mt-1">
-            {stats.activeContracts} Active Contracts
+        {/* Total Tenants Card */}
+        <div className="group relative bg-white rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 hover:-translate-y-2 cursor-pointer overflow-hidden border border-slate-100">
+          <div className="absolute inset-0 bg-gradient-to-br from-teal-500 to-cyan-600 opacity-0 group-hover:opacity-5 transition-opacity duration-300"></div>
+          <div className="relative">
+            <div className="flex items-center justify-between mb-4">
+              <div className="bg-teal-50 p-4 rounded-xl group-hover:scale-110 transition-transform duration-300">
+                <Users className="w-7 h-7 text-teal-600" />
+              </div>
+              <div className="flex items-center gap-1 text-sm font-bold px-3 py-1 rounded-full bg-teal-100 text-teal-600">
+                <FileText className="w-4 h-4" />
+                {stats.activeContracts}
+              </div>
+            </div>
+            <h3 className="text-slate-500 text-sm font-semibold uppercase tracking-wider mb-1">Active Tenants</h3>
+            <p className="text-3xl font-bold text-slate-900 group-hover:scale-105 transition-transform duration-300">
+              {stats.totalTenants}
+            </p>
+            <div className="text-sm text-slate-500 mt-2">
+              {stats.activeContracts} Active Contracts
+            </div>
           </div>
         </div>
 
-        <div className="bg-gradient-to-br from-cyan-600 to-teal-600 rounded-2xl shadow-lg p-6 text-white">
-          <div className="flex items-center justify-between mb-2">
-            <DollarSign className="w-8 h-8" />
-            <span className="text-sm font-semibold">Monthly Revenue</span>
+        {/* Monthly Revenue Card */}
+        <div className="group relative bg-gradient-to-br from-cyan-600 to-teal-600 rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 hover:-translate-y-2 cursor-pointer overflow-hidden text-white">
+          <div className="absolute inset-0 bg-white opacity-0 group-hover:opacity-10 transition-opacity duration-300"></div>
+          <div className="relative">
+            <div className="flex items-center justify-between mb-4">
+              <div className="bg-white/20 p-4 rounded-xl group-hover:scale-110 transition-transform duration-300">
+                <DollarSign className="w-7 h-7 text-white" />
+              </div>
+              <div className="flex items-center gap-1 text-sm font-bold px-3 py-1 rounded-full bg-white/20">
+                Per Month
+              </div>
+            </div>
+            <h3 className="text-white/80 text-sm font-semibold uppercase tracking-wider mb-1">Monthly Revenue</h3>
+            <p className="text-3xl font-bold group-hover:scale-105 transition-transform duration-300">
+              ₱{stats.monthlyRevenue.toLocaleString()}
+            </p>
+            <div className="text-sm text-white/80 mt-2">
+              From {stats.occupiedProperties} occupied {stats.occupiedProperties === 1 ? 'property' : 'properties'}
+            </div>
           </div>
-          <div className="text-3xl font-bold">₱{stats.monthlyRevenue.toLocaleString()}</div>
-          <div className="text-sm opacity-90 mt-1">From {stats.occupiedProperties} properties</div>
         </div>
 
-        <div className="bg-white rounded-2xl shadow-lg p-6 border border-amber-200">
-          <div className="flex items-center justify-between mb-2">
-            <AlertTriangle className="w-8 h-8 text-amber-600" />
-            <span className="text-sm font-semibold text-amber-700">Pending</span>
-          </div>
-          <div className="text-3xl font-bold text-amber-900">{stats.pendingPayments + stats.pendingMaintenance}</div>
-          <div className="text-sm text-slate-500 mt-1">
-            {stats.pendingPayments} Payments • {stats.pendingMaintenance} Maintenance
+        {/* Pending Items Card */}
+        <div className="group relative bg-white rounded-2xl shadow-lg p-6 hover:shadow-2xl transition-all duration-300 hover:-translate-y-2 cursor-pointer overflow-hidden border border-slate-100">
+          <div className="absolute inset-0 bg-gradient-to-br from-amber-500 to-orange-600 opacity-0 group-hover:opacity-5 transition-opacity duration-300"></div>
+          <div className="relative">
+            <div className="flex items-center justify-between mb-4">
+              <div className="bg-amber-50 p-4 rounded-xl group-hover:scale-110 transition-transform duration-300">
+                <AlertTriangle className="w-7 h-7 text-amber-600" />
+              </div>
+              <div className="flex items-center gap-1 text-sm font-bold px-3 py-1 rounded-full bg-amber-100 text-amber-600">
+                Requires Action
+              </div>
+            </div>
+            <h3 className="text-slate-500 text-sm font-semibold uppercase tracking-wider mb-1">Pending Items</h3>
+            <p className="text-3xl font-bold text-slate-900 group-hover:scale-105 transition-transform duration-300">
+              {stats.pendingPayments + stats.pendingMaintenance}
+            </p>
+            <div className="text-sm text-slate-500 mt-2 flex items-center gap-2">
+              <span className="flex items-center gap-1">
+                <DollarSign className="w-4 h-4 text-amber-600" />
+                {stats.pendingPayments} Payments
+              </span>
+              <span className="text-slate-300">•</span>
+              <span className="flex items-center gap-1">
+                <Wrench className="w-4 h-4 text-amber-600" />
+                {stats.pendingMaintenance} Maintenance
+              </span>
+            </div>
           </div>
         </div>
       </div>
@@ -694,7 +835,7 @@ const Rentals = () => {
               setActiveTab('properties');
               setCurrentPage(1);
               setFilterStatus('All');
-              fetchTableData(); // Only reload table, not whole page
+              queryClient.invalidateQueries(['rental-properties', 'rental-tenants', 'rental-contracts', 'rental-payments', 'rental-maintenance']);
             }}
             className={`px-6 py-3 rounded-xl font-semibold transition-all flex items-center gap-2 ${
               activeTab === 'properties'
@@ -711,7 +852,7 @@ const Rentals = () => {
               setActiveTab('tenants');
               setCurrentPage(1);
               setFilterStatus('All');
-              fetchTableData(); // Only reload table, not whole page
+              queryClient.invalidateQueries(['rental-properties', 'rental-tenants', 'rental-contracts', 'rental-payments', 'rental-maintenance']);
             }}
             className={`px-6 py-3 rounded-xl font-semibold transition-all flex items-center gap-2 ${
               activeTab === 'tenants'
@@ -728,7 +869,7 @@ const Rentals = () => {
               setActiveTab('contracts');
               setCurrentPage(1);
               setFilterStatus('All');
-              fetchTableData(); // Only reload table, not whole page
+              queryClient.invalidateQueries(['rental-properties', 'rental-tenants', 'rental-contracts', 'rental-payments', 'rental-maintenance']);
             }}
             className={`px-6 py-3 rounded-xl font-semibold transition-all flex items-center gap-2 ${
               activeTab === 'contracts'
@@ -745,7 +886,7 @@ const Rentals = () => {
               setActiveTab('payments');
               setCurrentPage(1);
               setFilterStatus('All');
-              fetchTableData(); // Only reload table, not whole page
+              queryClient.invalidateQueries(['rental-properties', 'rental-tenants', 'rental-contracts', 'rental-payments', 'rental-maintenance']);
             }}
             className={`px-6 py-3 rounded-xl font-semibold transition-all flex items-center gap-2 ${
               activeTab === 'payments'
@@ -762,7 +903,7 @@ const Rentals = () => {
               setActiveTab('maintenance');
               setCurrentPage(1);
               setFilterStatus('All');
-              fetchTableData(); // Only reload table, not whole page
+              queryClient.invalidateQueries(['rental-properties', 'rental-tenants', 'rental-contracts', 'rental-payments', 'rental-maintenance']);
             }}
             className={`px-6 py-3 rounded-xl font-semibold transition-all flex items-center gap-2 ${
               activeTab === 'maintenance'
@@ -846,19 +987,6 @@ const Rentals = () => {
         </div>
       </div>
 
-
-      {/* Table Loading Indicator */}
-      {tableLoading && (
-        <div className="bg-white rounded-2xl shadow-lg border border-slate-100 p-8 mb-6">
-          <div className="flex items-center justify-center">
-            <div className="flex items-center gap-3">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-cyan-600"></div>
-              <span className="text-slate-600 font-medium">Updating {activeTab}...</span>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* ADD PROPERTY MODAL (UNIFIED DESIGN) */}
       {showPropertyModal && (
         <Modal
@@ -874,6 +1002,7 @@ const Rentals = () => {
             const formData = new FormData(e.target);
             const propertyData = {
               name: formData.get('name'),
+              stall_number: formData.get('stall_number'),
               type: formData.get('type'),
               location: formData.get('location'),
               size: formData.get('size'),
@@ -883,6 +1012,22 @@ const Rentals = () => {
             handleCreateProperty(propertyData);
           }}>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Stall/Unit Number</label>
+                <input 
+                  name="stall_number" 
+                  type="text" 
+                  value={stallNumberInput}
+                  onChange={(e) => setStallNumberInput(e.target.value)}
+                  placeholder="e.g., Stall 1, Unit A" 
+                  className={`w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500 ${
+                    stallNumberError ? 'border-red-500 focus:ring-red-500' : 'border-slate-300'
+                  }`}
+                />
+                {stallNumberError && (
+                  <p className="text-red-500 text-xs mt-1">{stallNumberError}</p>
+                )}
+              </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Property Name</label>
                 <input name="name" type="text" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" required />
@@ -900,7 +1045,7 @@ const Rentals = () => {
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Size (sqm)</label>
-                <input name="size" type="number" min="1" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" required />
+                <input name="size" type="text" placeholder="e.g., 100 sqm or 100" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" required />
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Monthly Rate (₱)</label>
@@ -917,7 +1062,17 @@ const Rentals = () => {
             </div>
             <div className="flex justify-end gap-2 pt-4">
               <button type="button" onClick={() => setShowPropertyModal(false)} className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 font-semibold hover:bg-slate-50">Cancel</button>
-              <button type="submit" className="px-6 py-2 rounded-lg bg-gradient-to-r from-cyan-600 to-teal-600 text-white font-semibold shadow-lg hover:shadow-xl transition-all">Add Property</button>
+              <button 
+                type="submit" 
+                disabled={stallNumberError}
+                className={`px-6 py-2 rounded-lg font-semibold shadow-lg hover:shadow-xl transition-all ${
+                  stallNumberError 
+                    ? 'bg-gray-400 cursor-not-allowed' 
+                    : 'bg-gradient-to-r from-cyan-600 to-teal-600 text-white'
+                }`}
+              >
+                Add Property
+              </button>
             </div>
           </form>
         </Modal>
@@ -1310,7 +1465,7 @@ const Rentals = () => {
       )}
 
       {/* Content Area - Properties Tab */}
-      {activeTab === 'properties' && !tableLoading && (
+      {activeTab === 'properties' && (
         <div className="bg-white rounded-2xl shadow-lg border border-slate-100 overflow-hidden">
           {/* Mobile Cards */}
           <div className="block md:hidden">
@@ -1318,6 +1473,9 @@ const Rentals = () => {
               <div key={property.id} className="p-4 border-b border-slate-100 last:border-b-0">
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex-1">
+                    {property.stall_number && (
+                      <p className="text-sm font-semibold text-cyan-600 mb-1">{property.stall_number}</p>
+                    )}
                     <h3 className="font-semibold text-slate-900 text-lg">{property.name}</h3>
                     <span className={`inline-block px-3 py-1 text-xs font-semibold rounded-full border mt-2 ${getStatusColor(property.status)}`}>
                       {property.status}
@@ -1359,6 +1517,7 @@ const Rentals = () => {
                       className="p-2 text-slate-600 hover:bg-slate-50 rounded-lg transition-colors"
                       onClick={() => {
                         setEditingItem(property);
+                        setStallNumberInput(property.stall_number || '');
                         setShowEditPropertyModal(true);
                       }}
                     >
@@ -1384,6 +1543,7 @@ const Rentals = () => {
             <table className="w-full">
               <thead className="bg-gradient-to-r from-slate-50 to-slate-100 border-b border-slate-200">
                 <tr>
+                  <th className="px-6 py-4 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Stall #</th>
                   <th className="px-6 py-4 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Property</th>
                   <th className="px-6 py-4 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Type</th>
                   <th className="px-6 py-4 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Location</th>
@@ -1397,6 +1557,9 @@ const Rentals = () => {
               <tbody className="divide-y divide-slate-100">
                 {getPaginatedData().map((property) => (
                   <tr key={property.id} className="hover:bg-slate-50 transition-colors">
+                    <td className="px-6 py-4">
+                      <div className="font-semibold text-slate-600">{property.stall_number || '-'}</div>
+                    </td>
                     <td className="px-6 py-4">
                       <div className="font-semibold text-slate-900">{property.name}</div>
                     </td>
@@ -1424,6 +1587,7 @@ const Rentals = () => {
                           className="p-2 text-slate-600 hover:bg-slate-50 rounded-lg transition-colors"
                           onClick={() => {
                             setEditingItem(property);
+                            setStallNumberInput(property.stall_number || '');
                             setShowEditPropertyModal(true);
                           }}
                         >
@@ -1458,7 +1622,7 @@ const Rentals = () => {
       )}
 
       {/* Tenants Tab - Shows all people/businesses renting properties */}
-      {activeTab === 'tenants' && !tableLoading && (
+      {activeTab === 'tenants' && (
         <div className="bg-white rounded-2xl shadow-lg border border-slate-100 overflow-hidden">
           {/* Mobile Cards */}
           <div className="block md:hidden">
@@ -1605,7 +1769,7 @@ const Rentals = () => {
       )}
 
       {/* Contracts Tab - Shows all rental agreements */}
-      {activeTab === 'contracts' && !tableLoading && (
+      {activeTab === 'contracts' && (
         <div className="bg-white rounded-2xl shadow-lg border border-slate-100 overflow-hidden">
           {/* Mobile Cards */}
           <div className="block md:hidden">
@@ -1755,7 +1919,7 @@ const Rentals = () => {
       )}
 
       {/* Payments Tab - Shows all rent payments and billing */}
-      {activeTab === 'payments' && !tableLoading && (
+      {activeTab === 'payments' && (
         <div className="bg-white rounded-2xl shadow-lg border border-slate-100 overflow-hidden">
           {/* Mobile Cards */}
           <div className="block md:hidden">
@@ -1915,7 +2079,7 @@ const Rentals = () => {
       )}
 
       {/* Maintenance Tab - Shows all maintenance requests and repairs */}
-      {activeTab === 'maintenance' && !tableLoading && (
+      {activeTab === 'maintenance' && (
         <div className="bg-white rounded-2xl shadow-lg border border-slate-100 overflow-hidden">
           {/* Mobile Cards */}
           <div className="block md:hidden">
@@ -2073,7 +2237,7 @@ const Rentals = () => {
       )}
 
       {/* Pagination - Shows for all tabs */}
-      {getPaginatedData().length > 0 && !tableLoading && (
+      {getPaginatedData().length > 0 && (
         <div className="mt-6">
           <Pagination
             currentPage={currentPage}
@@ -2134,6 +2298,12 @@ const Rentals = () => {
                       <label className="text-sm text-slate-500 font-medium">Property Name</label>
                       <p className="text-slate-900 font-semibold text-lg">{selectedItem.name}</p>
                     </div>
+                    {selectedItem.stall_number && (
+                      <div>
+                        <label className="text-sm text-slate-500 font-medium">Stall Number</label>
+                        <p className="text-slate-900 font-semibold">{selectedItem.stall_number}</p>
+                      </div>
+                    )}
                     <div>
                       <label className="text-sm text-slate-500 font-medium">Type</label>
                       <p className="text-slate-900 font-semibold">{selectedItem.type}</p>
@@ -2584,6 +2754,7 @@ const Rentals = () => {
             const formData = new FormData(e.target);
             const propertyData = {
               name: formData.get('name'),
+              stall_number: formData.get('stall_number'),
               type: formData.get('type'),
               location: formData.get('location'),
               size: formData.get('size'),
@@ -2593,6 +2764,22 @@ const Rentals = () => {
             handleEditProperty(propertyData);
           }}>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Stall/Unit Number</label>
+                <input
+                  name="stall_number"
+                  type="text"
+                  value={stallNumberInput}
+                  onChange={(e) => setStallNumberInput(e.target.value)}
+                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 transition-colors ${
+                    stallNumberError ? 'border-red-500 focus:ring-red-500' : 'border-slate-300 focus:ring-cyan-500'
+                  }`}
+                  placeholder="e.g., Stall 1, Unit A"
+                />
+                {stallNumberError && (
+                  <p className="text-red-500 text-xs mt-1">{stallNumberError}</p>
+                )}
+              </div>
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-2">Property Name</label>
                 <input
@@ -2626,11 +2813,10 @@ const Rentals = () => {
                 <label className="block text-sm font-semibold text-slate-700 mb-2">Size (sqm)</label>
                 <input
                   name="size"
-                  type="number"
+                  type="text"
                   defaultValue={editingItem.size || ''}
                   className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-colors"
-                  placeholder="0"
-                  min="1"
+                  placeholder="e.g., 100 sqm or 100"
                   required
                 />
               </div>
@@ -2666,7 +2852,12 @@ const Rentals = () => {
               </button>
               <button
                 type="submit"
-                className="flex-1 px-4 py-3 bg-gradient-to-r from-cyan-600 to-teal-600 text-white rounded-lg font-semibold hover:shadow-lg transition-all"
+                disabled={stallNumberError}
+                className={`flex-1 px-4 py-3 rounded-lg font-semibold transition-all ${
+                  stallNumberError
+                    ? 'bg-gray-400 cursor-not-allowed'
+                    : 'bg-gradient-to-r from-cyan-600 to-teal-600 text-white hover:shadow-lg'
+                }`}
               >
                 Update Property
               </button>

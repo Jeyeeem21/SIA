@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import {
   ShoppingCart,
   Search,
@@ -10,7 +10,8 @@ import {
   Package,
   XCircle,
   Trash2,
-  Filter
+  Filter,
+  Barcode
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import ViewModal from '../components/ViewModal';
@@ -18,14 +19,33 @@ import DeleteModal from '../components/DeleteModal';
 import Modal from '../components/Modal';
 import AddOrderModal from '../components/AddOrderModal';
 import Pagination from '../components/Pagination';
-import { ordersAPI, productsAPI } from '../services/api';
+import { 
+  useOrders, 
+  useCreateOrder, 
+  useUpdateOrder, 
+  useCompleteOrder, 
+  useVoidOrder 
+} from '../hooks/useOrders';
+import { useProducts } from '../hooks/useProducts';
+import { LoadingBar, TableSkeleton } from '../components/LoadingStates';
 
 const Orders = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('All');
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
-  const [loading, setLoading] = useState(false);
+  
+  // Refs for barcode scanner
+  const barcodeInputRef = useRef(null);
+  const quantityInputRef = useRef(null);
+  
+  // React Query hooks - REALTIME, no repeated loading
+  const { data: orders = [], isLoading } = useOrders();
+  const { data: products = [] } = useProducts();
+  const createOrderMutation = useCreateOrder();
+  const updateOrderMutation = useUpdateOrder();
+  const completeOrderMutation = useCompleteOrder();
+  const voidOrderMutation = useVoidOrder();
   
   // Modal states
   const [viewModal, setViewModal] = useState({ isOpen: false, data: null });
@@ -34,10 +54,6 @@ const Orders = () => {
   const [completeModal, setCompleteModal] = useState({ isOpen: false, order: null });
   const [deleteModal, setDeleteModal] = useState({ isOpen: false, id: null, name: '' });
   const [voidModal, setVoidModal] = useState({ isOpen: false, order: null, reason: '' });
-
-  // Data from API
-  const [orders, setOrders] = useState([]);
-  const [products, setProducts] = useState([]);
 
   // Order form state
   const [orderForm, setOrderForm] = useState({
@@ -62,34 +78,6 @@ const Orders = () => {
     unit_price: 0,
     notes: ''
   });
-
-  // Fetch data from API
-  useEffect(() => {
-    fetchOrders();
-    fetchProducts();
-  }, []);
-
-  const fetchOrders = async () => {
-    try {
-      setLoading(true);
-      const response = await ordersAPI.getAll();
-      setOrders(response.data);
-    } catch (error) {
-      toast.error('Failed to fetch orders');
-      console.error('Error fetching orders:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchProducts = async () => {
-    try {
-      const response = await productsAPI.getAll();
-      setProducts(response.data);
-    } catch (error) {
-      console.error('Error fetching products:', error);
-    }
-  };
 
   // Service type options
   // Payment form state
@@ -129,10 +117,17 @@ const Orders = () => {
       unit_price: currentItem.unit_price || product.price
     };
 
-    setOrderForm({
+    // Auto-set service_type from first product's category
+    const updatedOrderForm = {
       ...orderForm,
       order_items: [...orderForm.order_items, newItem]
-    });
+    };
+
+    if (orderForm.order_items.length === 0 && product.category?.category_name) {
+      updatedOrderForm.service_type = product.category.category_name;
+    }
+
+    setOrderForm(updatedOrderForm);
 
     setCurrentItem({
       product_id: '',
@@ -142,7 +137,291 @@ const Orders = () => {
     });
 
     toast.success('Product added to order');
+    
+    // Refocus barcode scanner after adding
+    setTimeout(() => {
+      if (barcodeInputRef.current) {
+        barcodeInputRef.current.focus();
+      }
+    }, 100);
   };
+
+  // Add item by barcode (from scanner)
+  const addItemByBarcode = useCallback((barcode) => {
+    const product = products.find(p => 
+      p.barcode === barcode || 
+      p.product_id.toString() === barcode
+    );
+
+    if (!product) {
+      toast.error(`Product with barcode "${barcode}" not found`);
+      return;
+    }
+
+    if (product.status !== 'active') {
+      toast.error(`Product not available - "${product.product_name}" is inactive`);
+      return;
+    }
+
+    // Check if product already in order
+    const existingItemIndex = orderForm.order_items.findIndex(
+      item => item.product_id == product.product_id
+    );
+
+    if (existingItemIndex >= 0) {
+      // Increment quantity
+      const updatedItems = [...orderForm.order_items];
+      updatedItems[existingItemIndex].quantity += 1;
+      setOrderForm({
+        ...orderForm,
+        order_items: updatedItems
+      });
+      toast.success(`${product.product_name} quantity increased`);
+    } else {
+      // Add new item
+      const newItem = {
+        product_id: product.product_id,
+        product_name: product.product_name,
+        sku: product.sku,
+        quantity: 1,
+        unit_price: product.price,
+        notes: ''
+      };
+
+      const updatedOrderForm = {
+        ...orderForm,
+        order_items: [...orderForm.order_items, newItem]
+      };
+
+      // Auto-set service_type from first product's category
+      if (orderForm.order_items.length === 0 && product.category?.category_name) {
+        updatedOrderForm.service_type = product.category.category_name;
+      }
+
+      setOrderForm(updatedOrderForm);
+      toast.success(`${product.product_name} added to order`);
+    }
+
+    // Refocus barcode scanner
+    setTimeout(() => {
+      if (barcodeInputRef.current) {
+        barcodeInputRef.current.focus();
+      }
+    }, 100);
+  }, [products, orderForm]);
+
+  // Global barcode scanner - works even when editing quantities
+  useEffect(() => {
+    if (!addModal) return; // Only active when add modal is open
+
+    let barcodeBuffer = '';
+    let bufferTimeout;
+    let lastKeyTime = 0;
+    let keyCount = 0;
+
+    const handleGlobalKeyDown = (e) => {
+      // Ignore if not in add modal or typing in textarea/select
+      if (!addModal || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') {
+        return;
+      }
+
+      const currentTime = Date.now();
+      const timeDiff = currentTime - lastKeyTime;
+      
+      // Detect barcode scanner by fast typing
+      const isFastTyping = timeDiff < 30 && barcodeBuffer.length > 0;
+      
+      if (isFastTyping) {
+        keyCount++;
+      } else if (timeDiff > 100) {
+        keyCount = 0;
+      }
+      
+      const isDefinitelyScanner = keyCount >= 3;
+
+      if (e.key === 'Enter' && barcodeBuffer.length > 0) {
+        const isQuantityInput = e.target === quantityInputRef.current;
+        const isLongBarcode = barcodeBuffer.length >= 8;
+        
+        // Process as barcode if scanner detected or long barcode
+        if (isDefinitelyScanner || isLongBarcode || !isQuantityInput) {
+          e.preventDefault();
+          e.stopPropagation();
+          
+          // Clear quantity input if barcode entered there
+          if (isQuantityInput && e.target) {
+            e.target.value = '';
+          }
+          
+          toast.dismiss();
+          addItemByBarcode(barcodeBuffer);
+          
+          barcodeBuffer = '';
+          keyCount = 0;
+          if (barcodeInputRef.current) {
+            barcodeInputRef.current.value = '';
+          }
+        } else {
+          barcodeBuffer = '';
+          keyCount = 0;
+        }
+      } else if (/^[0-9]$/.test(e.key)) {
+        const isQuantityInput = e.target === quantityInputRef.current;
+        
+        // Prevent numbers from entering quantity input if scanner detected
+        if ((isDefinitelyScanner || isFastTyping) && isQuantityInput) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+        
+        barcodeBuffer += e.key;
+        lastKeyTime = currentTime;
+        
+        // Update barcode input display
+        if (barcodeInputRef.current && !isQuantityInput) {
+          barcodeInputRef.current.value = barcodeBuffer;
+        }
+        
+        clearTimeout(bufferTimeout);
+        bufferTimeout = setTimeout(() => {
+          barcodeBuffer = '';
+          keyCount = 0;
+        }, 100);
+      }
+    };
+
+    document.addEventListener('keydown', handleGlobalKeyDown, true);
+    return () => {
+      document.removeEventListener('keydown', handleGlobalKeyDown, true);
+      clearTimeout(bufferTimeout);
+    };
+  }, [addModal, products, orderForm, addItemByBarcode]);
+
+  // Global barcode scanner - opens modal and adds product when scanning outside modal
+  useEffect(() => {
+    let barcodeBuffer = '';
+    let bufferTimeout;
+    let lastKeyTime = 0;
+    let keyCount = 0;
+
+    const handleGlobalScan = (e) => {
+      // Only work when modal is closed and not typing in search/text inputs
+      if (addModal || e.target.type === 'search' || e.target.type === 'text' || e.target.tagName === 'INPUT') {
+        return;
+      }
+
+      const currentTime = Date.now();
+      const timeDiff = currentTime - lastKeyTime;
+      
+      const isFastTyping = timeDiff < 30 && barcodeBuffer.length > 0;
+      
+      if (isFastTyping) {
+        keyCount++;
+      } else if (timeDiff > 100) {
+        keyCount = 0;
+      }
+      
+      const isDefinitelyScanner = keyCount >= 3;
+
+      if (e.key === 'Enter' && barcodeBuffer.length > 0) {
+        const isLongBarcode = barcodeBuffer.length >= 8;
+        
+        // Only process if definitely from scanner or long barcode
+        if (isDefinitelyScanner || isLongBarcode) {
+          e.preventDefault();
+          e.stopPropagation();
+          
+          const barcode = barcodeBuffer;
+          barcodeBuffer = '';
+          keyCount = 0;
+          
+          // Find product
+          const product = products.find(p => 
+            p.barcode === barcode || 
+            p.product_id.toString() === barcode
+          );
+
+          if (!product) {
+            toast.error(`Product with barcode "${barcode}" not found`);
+            return;
+          }
+
+          if (product.status !== 'active') {
+            toast.error(`Product not available - "${product.product_name}" is inactive`);
+            return;
+          }
+
+          // Open modal if closed
+          if (!addModal) {
+            setAddModal(true);
+          }
+
+          // Add product after a short delay to ensure modal is open
+          setTimeout(() => {
+            const existingItemIndex = orderForm.order_items.findIndex(
+              item => item.product_id == product.product_id
+            );
+
+            if (existingItemIndex >= 0) {
+              // Increment quantity
+              const updatedItems = [...orderForm.order_items];
+              updatedItems[existingItemIndex].quantity += 1;
+              setOrderForm({
+                ...orderForm,
+                order_items: updatedItems
+              });
+              toast.success(`${product.product_name} quantity increased`);
+            } else {
+              // Add new item
+              const newItem = {
+                product_id: product.product_id,
+                product_name: product.product_name,
+                sku: product.sku,
+                quantity: 1,
+                unit_price: product.price,
+                notes: ''
+              };
+
+              const updatedOrderForm = {
+                ...orderForm,
+                order_items: [...orderForm.order_items, newItem]
+              };
+
+              if (orderForm.order_items.length === 0 && product.category?.category_name) {
+                updatedOrderForm.service_type = product.category.category_name;
+              }
+
+              setOrderForm(updatedOrderForm);
+              toast.success(`${product.product_name} added to order`);
+            }
+
+            // Focus barcode input in modal
+            if (barcodeInputRef.current) {
+              barcodeInputRef.current.focus();
+            }
+          }, 100);
+        } else {
+          barcodeBuffer = '';
+          keyCount = 0;
+        }
+      } else if (/^[0-9]$/.test(e.key)) {
+        barcodeBuffer += e.key;
+        lastKeyTime = currentTime;
+        
+        clearTimeout(bufferTimeout);
+        bufferTimeout = setTimeout(() => {
+          barcodeBuffer = '';
+          keyCount = 0;
+        }, 100);
+      }
+    };
+
+    document.addEventListener('keydown', handleGlobalScan, true);
+    return () => {
+      document.removeEventListener('keydown', handleGlobalScan, true);
+      clearTimeout(bufferTimeout);
+    };
+  }, [addModal, products, orderForm, setOrderForm, setAddModal]);
 
   const removeItemFromOrder = (index) => {
     setOrderForm({
@@ -150,6 +429,20 @@ const Orders = () => {
       order_items: orderForm.order_items.filter((_, i) => i !== index)
     });
     toast.success('Product removed from order');
+  };
+
+  const updateOrderItemQuantity = (index, newQuantity) => {
+    if (newQuantity <= 0) {
+      removeItemFromOrder(index);
+      return;
+    }
+    
+    const updatedItems = [...orderForm.order_items];
+    updatedItems[index].quantity = newQuantity;
+    setOrderForm({
+      ...orderForm,
+      order_items: updatedItems
+    });
   };
 
   const calculateTotal = () => {
@@ -175,44 +468,33 @@ const Orders = () => {
       return;
     }
 
-    try {
-      await ordersAPI.create(orderForm);
-      await fetchOrders();
-      setAddModal(false);
-      setOrderForm({
-        customer_name: '',
-        notes: '',
-        preferred_pickup_date: new Date().toISOString().split('T')[0],
-        order_items: []
-      });
-      toast.success('Order created successfully!');
-    } catch (error) {
-      toast.error(error.response?.data?.message || 'Failed to create order');
-      console.error('Error creating order:', error);
-    }
+    // Close modal immediately
+    setAddModal(false);
+    setOrderForm({
+      customer_name: '',
+      notes: '',
+      preferred_pickup_date: new Date().toISOString().split('T')[0],
+      order_items: []
+    });
+    
+    createOrderMutation.mutate(orderForm);
   };
 
   const handleUpdateStatus = async (orderId, newStatus) => {
-    try {
-      await ordersAPI.update(orderId, { status: newStatus });
-      await fetchOrders();
-      toast.success(`Order status updated to ${newStatus}`);
-    } catch (error) {
-      toast.error('Failed to update order status');
-      console.error('Error updating status:', error);
-    }
+    updateOrderMutation.mutate({ 
+      id: orderId, 
+      data: { status: newStatus } 
+    });
   };
 
   const handleDelete = async () => {
-    try {
-      await ordersAPI.delete(deleteModal.id);
-      await fetchOrders();
-      setDeleteModal({ isOpen: false, id: null, name: '' });
-      toast.success('Order deleted successfully!');
-    } catch (error) {
-      toast.error(error.response?.data?.message || 'Failed to delete order');
-      console.error('Error deleting order:', error);
-    }
+    // Close modal immediately
+    setDeleteModal({ isOpen: false, id: null, name: '' });
+    
+    updateOrderMutation.mutate({ 
+      id: deleteModal.id, 
+      data: { status: 'Cancelled' } 
+    });
   };
 
   const handleOpenCompleteModal = (order) => {
@@ -223,6 +505,15 @@ const Orders = () => {
       reference_number: '',
       notes: ''
     });
+    
+    // Auto-focus amount input after modal opens
+    setTimeout(() => {
+      const amountInput = document.querySelector('input[type="number"][step="0.01"]');
+      if (amountInput) {
+        amountInput.focus();
+        amountInput.select();
+      }
+    }, 100);
   };
 
   const handleCompleteOrder = async () => {
@@ -236,16 +527,14 @@ const Orders = () => {
       return;
     }
 
-    try {
-      console.log('Payment form data being sent:', paymentForm);
-      await ordersAPI.complete(completeModal.order.order_id, paymentForm);
-      await fetchOrders();
-      setCompleteModal({ isOpen: false, order: null });
-      toast.success('Order completed and payment recorded!');
-    } catch (error) {
-      toast.error(error.response?.data?.message || 'Failed to complete order');
-      console.error('Error completing order:', error);
-    }
+    // Close modal immediately
+    const orderId = completeModal.order.order_id;
+    setCompleteModal({ isOpen: false, order: null });
+    
+    completeOrderMutation.mutate({
+      id: orderId,
+      paymentData: paymentForm
+    });
   };
 
   const handleVoidOrder = async () => {
@@ -254,15 +543,15 @@ const Orders = () => {
       return;
     }
 
-    try {
-      await ordersAPI.voidOrder(voidModal.order.order_id, { void_reason: voidModal.reason });
-      await fetchOrders();
-      setVoidModal({ isOpen: false, order: null, reason: '' });
-      toast.success('Order voided successfully and inventory restored!');
-    } catch (error) {
-      toast.error(error.response?.data?.message || 'Failed to void order');
-      console.error('Error voiding order:', error);
-    }
+    // Close modal immediately
+    const orderId = voidModal.order.order_id;
+    const reason = voidModal.reason;
+    setVoidModal({ isOpen: false, order: null, reason: '' });
+    
+    voidOrderMutation.mutate({
+      id: orderId,
+      reason: reason
+    });
   };
 
   const addItemToEditOrder = () => {
@@ -320,6 +609,17 @@ const Orders = () => {
         product_id: productId,
         unit_price: product.price
       });
+
+      // Auto-update service_type if this is the first product
+      if (!editModal.data.order_items || editModal.data.order_items.length === 0) {
+        setEditModal({
+          ...editModal,
+          data: {
+            ...editModal.data,
+            service_type: product.category?.category_name || ''
+          }
+        });
+      }
     }
   };
 
@@ -335,27 +635,28 @@ const Orders = () => {
       return;
     }
 
-    try {
-      await ordersAPI.update(editModal.data.order_id, {
-        customer_name: editModal.data.customer_name,
-        service_type: editModal.data.service_type,
-        status: editModal.data.status,
-        notes: editModal.data.notes,
-        preferred_pickup_date: editModal.data.preferred_pickup_date,
-        order_items: editModal.data.order_items.map(item => ({
-          product_id: item.product_id,
-          quantity: item.quantity,
-          unit_price: item.unit_price,
-          notes: item.notes
-        }))
-      });
-      await fetchOrders();
-      setEditModal({ isOpen: false, data: null });
-      toast.success('Order updated successfully!');
-    } catch (error) {
-      toast.error(error.response?.data?.message || 'Failed to update order');
-      console.error('Error updating order:', error);
-    }
+    const updateData = {
+      customer_name: editModal.data.customer_name || null,
+      service_type: editModal.data.service_type, // Always send service_type (required)
+      status: editModal.data.status,
+      notes: editModal.data.notes || null,
+      preferred_pickup_date: editModal.data.preferred_pickup_date || null,
+      order_items: editModal.data.order_items.map(item => ({
+        product_id: item.product_id,
+        quantity: item.quantity,
+        unit_price: item.unit_price,
+        notes: item.notes || null
+      }))
+    };
+
+    // Close modal immediately
+    const orderId = editModal.data.order_id;
+    setEditModal({ isOpen: false, data: null });
+    
+    updateOrderMutation.mutate({
+      id: orderId,
+      data: updateData
+    });
   };
 
   const viewFields = [
@@ -392,6 +693,9 @@ const Orders = () => {
   };
 
   const filteredOrders = orders.filter(order => {
+    // Exclude cancelled orders from main Orders page (they're in Reports)
+    if (order.status === 'Cancelled') return false;
+    
     const matchesSearch = 
       order.order_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       order.customer_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -417,6 +721,7 @@ const Orders = () => {
 
   return (
     <div className="p-8 bg-gradient-to-br from-slate-50 via-cyan-50/30 to-teal-50/20 min-h-full">
+      {/* NO LoadingBar - instant updates from cache */}
       {/* Header */}
       <div className="mb-8">
         <h1 className="text-4xl font-bold bg-gradient-to-r from-slate-900 via-cyan-800 to-teal-900 bg-clip-text text-transparent mb-2">
@@ -498,17 +803,12 @@ const Orders = () => {
         </div>
 
         {/* Table */}
-        {loading ? (
-          <div className="flex items-center justify-center p-12">
-            <div className="text-slate-400">Loading orders...</div>
-          </div>
-        ) : (
-          <>
-            {/* Mobile Card View */}
-            <div className="block md:hidden p-4 space-y-4">
-              {paginatedOrders.length === 0 ? (
-                <div className="text-center text-slate-500 py-12">No orders found</div>
-              ) : (
+        <>
+          {/* Mobile Card View - NO LOADING STATE, instant from cache */}
+          <div className="block md:hidden p-4 space-y-4">
+            {paginatedOrders.length === 0 ? (
+              <div className="text-center text-slate-500 py-12">No orders found</div>
+            ) : (
                 paginatedOrders.map((order) => (
                   <div key={order.order_id} className="bg-slate-50 rounded-xl p-4 space-y-3 border border-slate-200">
                     <div className="flex items-start justify-between">
@@ -566,7 +866,13 @@ const Orders = () => {
                       {order.status !== 'Completed' && order.status !== 'Cancelled' && !order.is_voided && (
                         <>
                           <button 
-                            onClick={() => setEditModal({ isOpen: true, data: order })}
+                            onClick={() => setEditModal({ 
+                              isOpen: true, 
+                              data: { 
+                                ...order, 
+                                service_type: order.service_type || 'Printing' // Ensure valid default
+                              } 
+                            })}
                             className="flex-1 px-3 py-2 bg-amber-50 hover:bg-amber-100 text-amber-600 rounded-lg transition-colors text-sm font-medium flex items-center justify-center gap-1"
                           >
                             <Pencil className="w-4 h-4" />
@@ -620,9 +926,16 @@ const Orders = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
-                  {paginatedOrders.map((order) => {
-                    return (
-                      <tr key={order.order_id} className="hover:bg-slate-50 transition-colors">
+                  {paginatedOrders.length === 0 ? (
+                    <tr>
+                      <td colSpan="8" className="px-6 py-12 text-center text-slate-500">
+                        No orders found
+                      </td>
+                    </tr>
+                  ) : (
+                    paginatedOrders.map((order) => {
+                      return (
+                        <tr key={order.order_id} className="hover:bg-slate-50 transition-colors">
                         <td className="px-4 py-3 text-sm font-medium text-slate-900">
                           {order.order_number}
                         </td>
@@ -674,7 +987,13 @@ const Orders = () => {
                         {order.status !== 'Completed' && order.status !== 'Cancelled' && !order.is_voided && (
                           <>
                             <button 
-                              onClick={() => setEditModal({ isOpen: true, data: order })}
+                              onClick={() => setEditModal({ 
+                                isOpen: true, 
+                                data: { 
+                                  ...order, 
+                                  service_type: order.service_type || 'Printing' // Ensure valid default
+                                } 
+                              })}
                               className="p-2 bg-amber-100 text-amber-700 rounded-lg hover:bg-amber-200 transition-colors"
                               title="Edit Order"
                             >
@@ -707,11 +1026,12 @@ const Orders = () => {
                             </button>
                           </>
                         )}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>
@@ -728,9 +1048,8 @@ const Orders = () => {
             setCurrentPage(1);
           }}
         />
-      </>
-      )}
-    </div>
+        </>
+      </div>
 
       <AddOrderModal
         isOpen={addModal}
@@ -743,6 +1062,9 @@ const Orders = () => {
         addItemToOrder={addItemToOrder}
         removeItemFromOrder={removeItemFromOrder}
         handleSubmitOrder={handleSubmitOrder}
+        barcodeInputRef={barcodeInputRef}
+        quantityInputRef={quantityInputRef}
+        updateOrderItemQuantity={updateOrderItemQuantity}
       />
 
       {/* View Modal */}
@@ -796,23 +1118,41 @@ const Orders = () => {
                 </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">
-                  Order Status
-                </label>
-                <select
-                  value={editModal.data?.status || ''}
-                  onChange={(e) => setEditModal({ 
-                    ...editModal, 
-                    data: { ...editModal.data, status: e.target.value } 
-                  })}
-                  className="w-full px-4 py-2 border-2 border-slate-200 rounded-xl focus:border-amber-500 focus:outline-none text-slate-900 bg-white"
-                >
-                  <option value="Pending">Pending</option>
-                  <option value="In Progress">In Progress</option>
-                  <option value="Completed">Completed</option>
-                  <option value="Cancelled">Cancelled</option>
-                </select>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">
+                    Service Type
+                  </label>
+                  <input
+                    type="text"
+                    value={editModal.data?.service_type || ''}
+                    onChange={(e) => setEditModal({ 
+                      ...editModal, 
+                      data: { ...editModal.data, service_type: e.target.value } 
+                    })}
+                    placeholder="Auto-filled from product category"
+                    className="w-full px-4 py-2 border-2 border-slate-200 rounded-xl focus:border-amber-500 focus:outline-none text-slate-900 bg-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">
+                    Order Status
+                  </label>
+                  <select
+                    value={editModal.data?.status || ''}
+                    onChange={(e) => setEditModal({ 
+                      ...editModal, 
+                      data: { ...editModal.data, status: e.target.value } 
+                    })}
+                    className="w-full px-4 py-2 border-2 border-slate-200 rounded-xl focus:border-amber-500 focus:outline-none text-slate-900 bg-white"
+                  >
+                    <option value="Pending">Pending</option>
+                    <option value="In Progress">In Progress</option>
+                    <option value="Completed">Completed</option>
+                    <option value="Cancelled">Cancelled</option>
+                  </select>
+                </div>
               </div>
 
               {/* Add Product to Order */}
@@ -937,7 +1277,13 @@ const Orders = () => {
               <h2 className="text-2xl font-bold">Complete Order & Process Payment</h2>
             </div>
             
-            <div className="p-6 space-y-6">
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleCompleteOrder();
+              }}
+              className="p-6 space-y-6"
+            >
               {/* Order Summary */}
               <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
                 <div className="flex justify-between items-center mb-2">
@@ -1032,21 +1378,29 @@ const Orders = () => {
                   placeholder="Add payment notes..."
                 />
               </div>
-            </div>
+            </form>
 
             <div className="bg-slate-50 px-6 py-4 rounded-b-2xl flex justify-end gap-3 border-t border-slate-200">
               <button
+                type="button"
                 onClick={() => setCompleteModal({ isOpen: false, order: null })}
                 className="px-6 py-2.5 border-2 border-slate-300 text-slate-700 rounded-xl font-semibold hover:bg-slate-100 transition-all"
               >
                 Cancel
               </button>
               <button
-                onClick={handleCompleteOrder}
+                type="submit"
+                onClick={(e) => {
+                  e.preventDefault();
+                  handleCompleteOrder();
+                }}
                 className="px-6 py-2.5 bg-gradient-to-r from-teal-600 to-cyan-600 text-white rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all"
               >
                 Complete Order & Record Payment
               </button>
+              <p className="text-xs text-slate-500 w-full text-center mt-2">
+                Press <kbd className="px-2 py-1 bg-slate-200 rounded text-xs font-mono">Enter</kbd> to submit
+              </p>
             </div>
           </div>
         </div>

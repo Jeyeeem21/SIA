@@ -13,7 +13,13 @@ const ViewModal = ({ isOpen, onClose, title, data, fields }) => {
               {field.label}
             </label>
             <div className="text-base text-gray-900">
-              {field.render ? field.render(data[field.key]) : data[field.key] || 'N/A'}
+              {field.type === 'file' && data[field.key] ? (
+                <img src={data[field.key]} alt={field.label} className="h-40 w-40 object-cover rounded-lg border border-gray-300" />
+              ) : field.render ? (
+                field.render(data[field.key])
+              ) : (
+                data[field.key] || 'N/A'
+              )}
             </div>
           </div>
         ))}

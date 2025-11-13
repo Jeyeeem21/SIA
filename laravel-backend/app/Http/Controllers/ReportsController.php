@@ -8,6 +8,7 @@ use App\Models\Inventory;
 use App\Models\OrderItem;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
 use Carbon\Carbon;
 
 class ReportsController extends Controller
@@ -18,6 +19,16 @@ class ReportsController extends Controller
         $startDate = $request->input('start_date', Carbon::now()->startOfMonth()->format('Y-m-d'));
         $endDate = $request->input('end_date', Carbon::now()->endOfMonth()->format('Y-m-d'));
 
+        // Cache for 1 second - ULTRA FAST! Same as Dashboard
+        $cacheKey = "reports_{$startDate}_{$endDate}";
+        
+        return Cache::remember($cacheKey, 1, function () use ($startDate, $endDate) {
+            return $this->getReportsData($startDate, $endDate);
+        });
+    }
+
+    private function getReportsData($startDate, $endDate)
+    {
         // Inventory Report Cards (match Dashboard calculation)
         $inventoryStats = [
             'total_items' => Product::where('status', 'active')->count(),
@@ -112,14 +123,24 @@ class ReportsController extends Controller
                 ];
             });
 
-        // Detailed Transaction Table Data (use created_at for filtering)
+        // Summary Stats (for Completed orders only in date range)
+        $completedOrders = Order::where('status', 'Completed')
+            ->whereBetween('completed_date', [
+                Carbon::parse($startDate)->startOfDay(),
+                Carbon::parse($endDate)->endOfDay()
+            ]);
+        
+        $totalOrders = $completedOrders->count();
+        $totalRevenue = $completedOrders->sum('total_amount');
+        $averageOrderValue = $totalOrders > 0 ? $totalRevenue / $totalOrders : 0;
+
+        // Detailed Transaction Table Data (All orders in date range)
         $transactions = Order::with(['orderItems.product', 'payment'])
             ->whereBetween('created_at', [
                 Carbon::parse($startDate)->startOfDay(),
                 Carbon::parse($endDate)->endOfDay()
             ])
             ->orderBy('created_at', 'desc')
-            ->orderByRaw("FIELD(status, 'Pending', 'In Progress', 'Completed', 'Cancelled')")
             ->get()
             ->map(function ($order) {
                 return [
@@ -138,8 +159,8 @@ class ReportsController extends Controller
                     'status' => $order->status,
                     'payment_status' => $order->payment->payment_status ?? 'unpaid',
                     'payment_method' => $order->payment->payment_method ?? 'N/A',
-                    'date' => $order->created_at->format('Y-m-d'),
-                    'time' => $order->created_at->format('h:i A'),
+                    'date' => $order->completed_date ? Carbon::parse($order->completed_date)->format('Y-m-d') : $order->created_at->format('Y-m-d'),
+                    'time' => $order->completed_date ? Carbon::parse($order->completed_date)->format('h:i A') : $order->created_at->format('h:i A'),
                 ];
             });
 
@@ -207,6 +228,11 @@ class ReportsController extends Controller
 
         return response()->json([
             'inventory_stats' => $inventoryStats,
+            'summary_stats' => [
+                'total_orders' => $totalOrders,
+                'total_revenue' => (float) $totalRevenue,
+                'average_order_value' => (float) $averageOrderValue,
+            ],
             'daily_sales' => $dailySalesFormatted,
             'weekly_sales' => $weeklySales,
             'monthly_sales' => $monthlySales,

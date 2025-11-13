@@ -11,6 +11,7 @@ class RentalProperty extends Model
 {
     protected $fillable = [
         'name',
+        'stall_number',
         'type',
         'location',
         'size',

@@ -12,8 +12,13 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('products', function (Blueprint $table) {
-            $table->date('expiration_date')->nullable()->after('price');
-            $table->boolean('is_active')->default(true)->after('expiration_date');
+            // Check if columns don't exist before adding
+            if (!Schema::hasColumn('products', 'expiration_date')) {
+                $table->date('expiration_date')->nullable()->after('price');
+            }
+            if (!Schema::hasColumn('products', 'is_active')) {
+                $table->boolean('is_active')->default(true)->after('expiration_date');
+            }
         });
     }
 
