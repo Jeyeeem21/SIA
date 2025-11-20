@@ -117,6 +117,13 @@ class ProductController extends Controller
      */
     public function destroy(Product $product)
     {
+        // Check if product has order items
+        if ($product->orderItems()->count() > 0) {
+            return response()->json([
+                'message' => 'Cannot delete product. This product has existing orders. Please remove the product from orders first or archive it instead.'
+            ], 422);
+        }
+
         $product->delete();
         return response()->json(['message' => 'Product deleted successfully']);
     }

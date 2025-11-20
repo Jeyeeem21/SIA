@@ -19,7 +19,8 @@ import {
   Bell,
   ChevronDown,
   Tag,
-  Building2
+  Building2,
+  GraduationCap
 } from 'lucide-react';
 
 const Sidebar = () => {
@@ -81,6 +82,7 @@ const Sidebar = () => {
     { icon: ShoppingCart, label: 'Orders', path: '/orders', color: 'text-amber-400' },
     { icon: Users, label: 'Staff', path: '/staff', color: 'text-rose-400' },
     { icon: Building2, label: 'Rentals', path: '/rentals', color: 'text-indigo-400' },
+    { icon: GraduationCap, label: 'Toga Rentals', path: '/toga-rentals', color: 'text-purple-400' },
     // { icon: Users, label: 'Customers', path: '/customers', color: 'text-rose-400' }, // Hidden - customer_name is now optional in orders
     { icon: BarChart3, label: 'Reports', path: '/reports', color: 'text-violet-400' },
     // { icon: FileText, label: 'Invoices', path: '/invoices', color: 'text-orange-400' }, // Hidden

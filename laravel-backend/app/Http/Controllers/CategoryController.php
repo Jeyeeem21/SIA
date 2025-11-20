@@ -64,6 +64,13 @@ class CategoryController extends Controller
      */
     public function destroy(Category $category)
     {
+        // Check if category has products
+        if ($category->products()->count() > 0) {
+            return response()->json([
+                'message' => 'Cannot delete category. This category has products assigned to it. Please reassign or delete the products first.'
+            ], 422);
+        }
+
         $category->delete();
         return response()->json(['message' => 'Category deleted successfully']);
     }

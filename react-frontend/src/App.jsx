@@ -17,6 +17,7 @@ import Invoices from './pages/Invoices'
 import Settings from './pages/Settings'
 import Staff from './pages/Staff'
 import Rentals from './pages/Rentals'
+import TogaRentals from './pages/TogaRentals'
 import Toast from './components/Toast'
 import Pos from './pages/staff/Pos'
 
@@ -58,6 +59,7 @@ function App() {
             <Route path="staff" element={<Staff />} />
             <Route path="customers" element={<Customers />} />
             <Route path="rentals" element={<Rentals />} />
+            <Route path="toga-rentals" element={<TogaRentals />} />
             <Route path="reports" element={<Reports />} />
             {/* <Route path="invoices" element={<Invoices />} /> */}
             <Route path="settings" element={<Settings />} />

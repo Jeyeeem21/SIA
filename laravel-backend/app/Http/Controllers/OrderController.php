@@ -333,6 +333,13 @@ class OrderController extends Controller
      */
     public function destroy(Order $order)
     {
+        // Check if order has payments
+        if ($order->payment()->exists()) {
+            return response()->json([
+                'message' => 'Cannot delete order. This order has payment records. Please remove the payment first or mark the order as cancelled instead.'
+            ], 422);
+        }
+
         // Return inventory before deleting
         foreach ($order->orderItems as $item) {
             $inventory = Inventory::where('product_id', $item->product_id)->first();

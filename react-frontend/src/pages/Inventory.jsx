@@ -571,26 +571,24 @@ const Inventory = () => {
             <FileText className="w-5 h-5 text-cyan-600" />
             Sales History ({selectedPeriod === 'daily' ? 'Today' : selectedPeriod === 'monthly' ? 'This Month' : 'This Year'})
           </h3>
-          {salesLoading ? (
-            <TableSkeleton />
-          ) : (
-            <>
-              <div className="overflow-x-auto rounded-lg border border-slate-200">
-                <table className="min-w-full divide-y divide-slate-200">
-                  <thead className="bg-slate-100">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase">Date & Time</th>
-                      <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase">Order #</th>
-                      <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase">Product</th>
-                      <th className="px-6 py-3 text-center text-xs font-bold text-slate-700 uppercase">Qty Sold</th>
-                      <th className="px-6 py-3 text-center text-xs font-bold text-slate-700 uppercase">Unit Price</th>
-                      <th className="px-6 py-3 text-center text-xs font-bold text-slate-700 uppercase">Subtotal</th>
-                      <th className="px-6 py-3 text-center text-xs font-bold text-slate-700 uppercase">Service</th>
-                      <th className="px-6 py-3 text-center text-xs font-bold text-slate-700 uppercase">Payment</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-slate-200">
-                    {salesHistory.length === 0 ? (
+          <div className="overflow-x-auto rounded-lg border border-slate-200">
+            <table className="min-w-full divide-y divide-slate-200">
+              <thead className="bg-slate-100">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase">Date & Time</th>
+                  <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase">Order #</th>
+                  <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase">Product</th>
+                  <th className="px-6 py-3 text-center text-xs font-bold text-slate-700 uppercase">Qty Sold</th>
+                  <th className="px-6 py-3 text-center text-xs font-bold text-slate-700 uppercase">Unit Price</th>
+                  <th className="px-6 py-3 text-center text-xs font-bold text-slate-700 uppercase">Subtotal</th>
+                  <th className="px-6 py-3 text-center text-xs font-bold text-slate-700 uppercase">Service</th>
+                  <th className="px-6 py-3 text-center text-xs font-bold text-slate-700 uppercase">Payment</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-slate-200">
+                {salesLoading ? (
+                  <TableSkeleton columns={8} />
+                ) : salesHistory.length === 0 ? (
                       <tr>
                         <td colSpan="8" className="px-6 py-8 text-center text-slate-500">
                           No sales recorded for this period
@@ -640,7 +638,7 @@ const Inventory = () => {
                 </table>
               </div>
               
-              {salesHistory.length > 0 && (
+              {!salesLoading && salesHistory.length > 0 && (
                 <Pagination
                   currentPage={salesPage}
                   totalPages={Math.ceil(salesHistory.length / salesItemsPerPage)}
@@ -653,8 +651,6 @@ const Inventory = () => {
                   }}
                 />
               )}
-            </>
-          )}
         </div>
       </div>
 

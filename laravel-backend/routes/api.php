@@ -115,3 +115,27 @@ Route::prefix('rentals')->group(function () {
     // Stats
     Route::get('stats', [RentalsController::class, 'getStats']);
 });
+
+// Toga Rental API routes
+Route::prefix('toga-rentals')->group(function () {
+    // Statistics
+    Route::get('stats', [\App\Http\Controllers\TogaRentalController::class, 'getStats']);
+    
+    // Departments
+    Route::get('departments', [\App\Http\Controllers\TogaRentalController::class, 'getDepartments']);
+    Route::post('departments', [\App\Http\Controllers\TogaRentalController::class, 'storeDepartment']);
+    Route::put('departments/{id}', [\App\Http\Controllers\TogaRentalController::class, 'updateDepartment']);
+    Route::delete('departments/{id}', [\App\Http\Controllers\TogaRentalController::class, 'destroyDepartment']);
+    
+    // Rentals/Students
+    Route::get('departments/{departmentId}/rentals', [\App\Http\Controllers\TogaRentalController::class, 'getRentals']);
+    Route::post('rentals', [\App\Http\Controllers\TogaRentalController::class, 'storeRental']);
+    Route::put('rentals/{id}', [\App\Http\Controllers\TogaRentalController::class, 'updateRental']);
+    Route::delete('rentals/{id}', [\App\Http\Controllers\TogaRentalController::class, 'destroyRental']);
+    
+    // Payments
+    Route::get('departments/{departmentId}/payments', [\App\Http\Controllers\TogaRentalController::class, 'getPayments']);
+    Route::post('payments', [\App\Http\Controllers\TogaRentalController::class, 'storePayment']);
+    Route::put('payments/{id}', [\App\Http\Controllers\TogaRentalController::class, 'updatePayment']);
+    Route::delete('payments/{id}', [\App\Http\Controllers\TogaRentalController::class, 'destroyPayment']);
+});
