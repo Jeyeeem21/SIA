@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\ProductTransaction;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 class ProductTransactionController extends Controller
 {
@@ -170,7 +171,7 @@ class ProductTransactionController extends Controller
                 'products' => $products,
             ]);
         } catch (\Exception $e) {
-            \Log::error('Growth rates error: ' . $e->getMessage());
+            Log::error('Growth rates error: ' . $e->getMessage());
             return response()->json([
                 'period' => $request->input('period', 'daily'),
                 'current_period' => ['start' => now()->toDateString(), 'end' => now()->toDateString()],
