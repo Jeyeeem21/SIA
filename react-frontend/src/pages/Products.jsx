@@ -80,7 +80,7 @@ const Products = () => {
     }));
 
   // Modal field configurations
-  const productFields = [
+  const addProductFields = [
     { key: 'product_name', label: 'Product Name', type: 'text', required: true, placeholder: 'Enter unique product name' },
     { key: 'barcode', label: 'Barcode', type: 'text', required: false, placeholder: 'Optional barcode number', defaultValue: scannedBarcode },
     { key: 'category_id', label: 'Category', type: 'select', required: true, 
@@ -98,7 +98,35 @@ const Products = () => {
     { key: 'price', label: 'Selling Price (₱)', type: 'number', required: true, placeholder: '0.00', step: '0.01' },
     { key: 'cost', label: 'Cost Price (₱)', type: 'number', required: false, placeholder: '0.00', step: '0.01' },
     { key: 'expiration_date', label: 'Expiration Date', type: 'date', required: false, placeholder: 'Select expiration date' },
-    { key: 'status', label: 'Status', type: 'text', required: true, defaultValue: 'active', readOnly: true },
+    { key: 'status', label: 'Status', type: 'hidden', required: false, defaultValue: 'active' },
+    { key: 'product_image', label: 'Product Image', type: 'file', required: false, accept: 'image/*', placeholder: 'Upload product image', fullWidth: true },
+    { key: 'description', label: 'Description', type: 'textarea', fullWidth: true, rows: 3, placeholder: 'Product description...' }
+  ];
+
+  const editProductFields = [
+    { key: 'product_name', label: 'Product Name', type: 'text', required: true, placeholder: 'Enter unique product name' },
+    { key: 'barcode', label: 'Barcode', type: 'text', required: false, placeholder: 'Optional barcode number' },
+    { key: 'category_id', label: 'Category', type: 'select', required: true, 
+      options: categoryOptions
+    },
+    { key: 'unit', label: 'Unit', type: 'select', required: true,
+      options: [
+        { value: 'piece', label: 'Piece' },
+        { value: 'ream', label: 'Ream' },
+        { value: 'yard', label: 'Yard' },
+        { value: 'set', label: 'Set' },
+        { value: 'pack', label: 'Pack' }
+      ]
+    },
+    { key: 'price', label: 'Selling Price (₱)', type: 'number', required: true, placeholder: '0.00', step: '0.01' },
+    { key: 'cost', label: 'Cost Price (₱)', type: 'number', required: false, placeholder: '0.00', step: '0.01' },
+    { key: 'expiration_date', label: 'Expiration Date', type: 'date', required: false, placeholder: 'Select expiration date' },
+    { key: 'status', label: 'Status', type: 'select', required: true,
+      options: [
+        { value: 'active', label: 'Active' },
+        { value: 'inactive', label: 'Inactive' }
+      ]
+    },
     { key: 'product_image', label: 'Product Image', type: 'file', required: false, accept: 'image/*', placeholder: 'Upload product image', fullWidth: true },
     { key: 'description', label: 'Description', type: 'textarea', fullWidth: true, rows: 3, placeholder: 'Product description...' }
   ];
@@ -300,8 +328,8 @@ const Products = () => {
                     <h3 className="font-semibold text-slate-900">{product.product_name}</h3>
                     <p className="text-xs text-slate-500 font-mono mt-1">{product.barcode || 'N/A'}</p>
                   </div>
-                  <span className={`px-3 py-1 rounded-full text-xs font-medium border ${getStatusColor(product.status)}`}>
-                    {getStatusText(product.status)}
+                  <span className={`px-3 py-1 rounded-full text-xs font-medium border ${product.is_active ? 'bg-emerald-100 text-emerald-700 border-emerald-300' : 'bg-slate-100 text-slate-600 border-slate-300'}`}>
+                    {product.is_active ? 'Active' : 'Inactive'}
                   </span>
                 </div>
 
@@ -488,7 +516,7 @@ const Products = () => {
           setScannedBarcode(''); // Clear scanned barcode when modal closes
         }}
         title="Add New Product"
-        fields={productFields}
+        fields={addProductFields}
         onSubmit={handleAdd}
       />
 
@@ -496,7 +524,7 @@ const Products = () => {
         isOpen={editModal.isOpen}
         onClose={() => setEditModal({ isOpen: false, data: null })}
         title="Edit Product"
-        fields={productFields}
+        fields={editProductFields}
         data={editModal.data}
         onSubmit={handleEdit}
       />

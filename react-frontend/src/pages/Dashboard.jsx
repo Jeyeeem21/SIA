@@ -88,6 +88,7 @@ const Dashboard = () => {
       const response = await rentalsAPI.getStats();
       return response.data;
     },
+    refetchInterval: 1000, // Real-time updates every second
   });
   
   // Low stock notification state

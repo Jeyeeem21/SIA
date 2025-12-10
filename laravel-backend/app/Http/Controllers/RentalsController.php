@@ -25,6 +25,10 @@ class RentalsController extends Controller
         // Add computed fields for frontend compatibility
         $properties = $properties->map(function ($property) {
             $activeContract = $property->contracts->first();
+            $hasActiveTenant = $activeContract && $activeContract->tenant;
+
+            // Auto-determine status based on active contracts/tenants
+            $computedStatus = $hasActiveTenant ? 'Occupied' : 'Vacant';
 
             return [
                 'id' => $property->id,
@@ -34,7 +38,7 @@ class RentalsController extends Controller
                 'location' => $property->location,
                 'size' => $property->size,
                 'monthlyRate' => $property->monthly_rate,
-                'status' => $property->status,
+                'status' => $computedStatus, // Use computed status instead of stored status
                 'tenant' => $activeContract && $activeContract->tenant ? $activeContract->tenant->name : null,
                 'contractEnd' => $activeContract && $activeContract->end_date ? $activeContract->end_date->format('Y-m-d') : null,
             ];
@@ -67,6 +71,8 @@ class RentalsController extends Controller
             'status' => $request->status,
         ]);
 
+        Cache::forget('rental_stats');
+
         return response()->json($property, 201);
     }
 
@@ -94,6 +100,8 @@ class RentalsController extends Controller
             'status' => $request->status,
         ]);
 
+        Cache::forget('rental_stats');
+
         return response()->json($property);
     }
 
@@ -103,6 +111,9 @@ class RentalsController extends Controller
         // will be deleted automatically due to cascade foreign keys
         // This preserves historical data while removing the property
         $property->delete();
+
+        Cache::forget('rental_stats');
+
         return response()->json(['message' => 'Property deleted successfully']);
     }
 
@@ -151,6 +162,9 @@ class RentalsController extends Controller
             'contract_status',
             'deposit_paid',
         ]));
+
+        Cache::forget('rental_stats');
+
         return response()->json($tenant, 201);
     }
 
@@ -175,6 +189,9 @@ class RentalsController extends Controller
             'contract_status',
             'deposit_paid',
         ]));
+
+        Cache::forget('rental_stats');
+
         return response()->json($tenant);
     }
 
@@ -186,6 +203,9 @@ class RentalsController extends Controller
         }
 
         $tenant->delete();
+
+        Cache::forget('rental_stats');
+
         return response()->json(['message' => 'Tenant deleted successfully']);
     }
 
@@ -252,6 +272,9 @@ class RentalsController extends Controller
             'deposit',
             'status',
         ]));
+
+        Cache::forget('rental_stats');
+
         return response()->json($contract, 201);
     }
 
@@ -278,12 +301,18 @@ class RentalsController extends Controller
             'deposit',
             'status',
         ]));
+
+        Cache::forget('rental_stats');
+
         return response()->json($contract);
     }
 
     public function deleteContract(RentalContract $contract)
     {
         $contract->delete();
+
+        Cache::forget('rental_stats');
+
         return response()->json(['message' => 'Contract deleted successfully']);
     }
 
@@ -338,6 +367,9 @@ class RentalsController extends Controller
             'method' => $request->input('method'),
             'status' => $request->status,
         ]);
+
+        Cache::forget('rental_stats');
+
         return response()->json($payment, 201);
     }
 
@@ -355,12 +387,18 @@ class RentalsController extends Controller
 
         // Don't allow payment_number to be updated
         $payment->update($request->except('payment_number'));
+
+        Cache::forget('rental_stats');
+
         return response()->json($payment);
     }
 
     public function deletePayment(RentalPayment $payment)
     {
         $payment->delete();
+
+        Cache::forget('rental_stats');
+
         return response()->json(['message' => 'Payment deleted successfully']);
     }
 
@@ -415,6 +453,9 @@ class RentalsController extends Controller
             'date_reported' => $request->date_reported,
             'assigned_to' => $request->assigned_to,
         ]);
+
+        Cache::forget('rental_stats');
+
         return response()->json($maintenance, 201);
     }
 
@@ -432,12 +473,18 @@ class RentalsController extends Controller
 
         // Don't allow request_number to be updated
         $maintenance->update($request->except('request_number'));
+
+        Cache::forget('rental_stats');
+
         return response()->json($maintenance);
     }
 
     public function deleteMaintenance(RentalMaintenance $maintenance)
     {
         $maintenance->delete();
+
+        Cache::forget('rental_stats');
+
         return response()->json(['message' => 'Maintenance request deleted successfully']);
     }
 
@@ -446,20 +493,20 @@ class RentalsController extends Controller
     public function getStats()
     {
         $stats = Cache::remember('rental_stats', 1, function () {
+            // Total Properties (active only)
             $totalProperties = RentalProperty::count();
-            $occupiedProperties = RentalProperty::where('status', 'Occupied')->count();
-            $vacantProperties = RentalProperty::where('status', 'Vacant')->count();
-            
+            $occupiedProperties = RentalContract::where('status', 'Active')->distinct('property_id')->count('property_id');
+            $vacantProperties = $totalProperties - $occupiedProperties;
+                
             // Calculate expiring contracts (within 60 days)
             $expiringContracts = RentalContract::where('status', 'Active')
                 ->where('end_date', '<=', now()->addDays(60))
                 ->where('end_date', '>=', now())
                 ->count();
-            
-            // Calculate monthly revenue from occupied properties
-            $monthlyRevenue = RentalProperty::where('status', 'Occupied')
-                ->sum('monthly_rate');
-            
+                
+            // Calculate monthly revenue from active contracts
+            $monthlyRevenue = RentalContract::where('status', 'Active')->sum('monthly_rent');
+                
             return [
                 'total_properties' => $totalProperties,
                 'occupied_properties' => $occupiedProperties,

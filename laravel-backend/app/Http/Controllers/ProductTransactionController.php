@@ -77,22 +77,22 @@ class ProductTransactionController extends Controller
             // Define date ranges based on period
             switch ($period) {
                 case 'monthly':
-                    $currentStart = $now->copy()->startOfMonth();
-                    $currentEnd = $now->copy()->endOfMonth();
-                    $previousStart = $now->copy()->subMonth()->startOfMonth();
-                    $previousEnd = $now->copy()->subMonth()->endOfMonth();
+                    $currentStart = \Carbon\Carbon::parse('first day of this month')->startOfDay();
+                    $currentEnd = \Carbon\Carbon::parse('last day of this month')->endOfDay();
+                    $previousStart = \Carbon\Carbon::parse('first day of last month')->startOfDay();
+                    $previousEnd = \Carbon\Carbon::parse('last day of last month')->endOfDay();
                     break;
                 case 'yearly':
-                    $currentStart = $now->copy()->startOfYear();
-                    $currentEnd = $now->copy()->endOfYear();
-                    $previousStart = $now->copy()->subYear()->startOfYear();
-                    $previousEnd = $now->copy()->subYear()->endOfYear();
+                    $currentStart = \Carbon\Carbon::parse('first day of January ' . date('Y'))->startOfDay();
+                    $currentEnd = \Carbon\Carbon::parse('last day of December ' . date('Y'))->endOfDay();
+                    $previousStart = \Carbon\Carbon::parse('first day of January ' . (date('Y')-1))->startOfDay();
+                    $previousEnd = \Carbon\Carbon::parse('last day of December ' . (date('Y')-1))->endOfDay();
                     break;
                 default: // daily
-                    $currentStart = $now->copy()->startOfDay();
-                    $currentEnd = $now->copy()->endOfDay();
-                    $previousStart = $now->copy()->subDay()->startOfDay();
-                    $previousEnd = $now->copy()->subDay()->endOfDay();
+                    $currentStart = \Carbon\Carbon::today()->startOfDay();
+                    $currentEnd = \Carbon\Carbon::today()->endOfDay();
+                    $previousStart = \Carbon\Carbon::yesterday()->startOfDay();
+                    $previousEnd = \Carbon\Carbon::yesterday()->endOfDay();
                     break;
             }
 

@@ -8,6 +8,7 @@ use App\Models\TogaPayment;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use App\Services\CacheService;
 
 class TogaRentalController extends Controller
 {
@@ -64,8 +65,7 @@ class TogaRentalController extends Controller
 
         $department = TogaDepartment::create($validated);
 
-        Cache::forget('toga_departments');
-        Cache::forget('toga_stats');
+        CacheService::clearTogaCache();
 
         return response()->json([
             'message' => 'Department created successfully',
@@ -89,8 +89,7 @@ class TogaRentalController extends Controller
 
         $department->update($validated);
 
-        Cache::forget('toga_departments');
-        Cache::forget('toga_stats');
+        CacheService::clearTogaCache();
 
         return response()->json([
             'message' => 'Department updated successfully',
@@ -105,17 +104,18 @@ class TogaRentalController extends Controller
     {
         $department = TogaDepartment::findOrFail($id);
         
-        // Check if department has rentals
-        if ($department->rentals()->count() > 0) {
+
+        // Check if department has rentals that are not fully paid
+        $unpaidCount = $department->rentals()->where('payment_status', '!=', 'Paid')->count();
+        if ($unpaidCount > 0) {
             return response()->json([
-                'message' => 'Cannot delete department with existing rentals'
+                'message' => 'Cannot delete department: some students have not fully paid.'
             ], 422);
         }
 
         $department->delete();
 
-        Cache::forget('toga_departments');
-        Cache::forget('toga_stats');
+        CacheService::clearTogaCache();
 
         return response()->json([
             'message' => 'Department deleted successfully'
@@ -182,8 +182,7 @@ class TogaRentalController extends Controller
         $rental = TogaRental::create($validated);
 
         Cache::forget("toga_rentals_dept_{$rental->toga_department_id}");
-        Cache::forget('toga_departments');
-        Cache::forget('toga_stats');
+        CacheService::clearTogaCache();
 
         return response()->json([
             'message' => 'Student rental created successfully',
@@ -214,8 +213,7 @@ class TogaRentalController extends Controller
         $rental->update($validated);
 
         Cache::forget("toga_rentals_dept_{$rental->toga_department_id}");
-        Cache::forget('toga_departments');
-        Cache::forget('toga_stats');
+        CacheService::clearTogaCache();
 
         return response()->json([
             'message' => 'Student rental updated successfully',
@@ -234,8 +232,7 @@ class TogaRentalController extends Controller
         $rental->delete();
 
         Cache::forget("toga_rentals_dept_{$departmentId}");
-        Cache::forget('toga_departments');
-        Cache::forget('toga_stats');
+        CacheService::clearTogaCache();
 
         return response()->json([
             'message' => 'Student rental deleted successfully'
@@ -300,8 +297,7 @@ class TogaRentalController extends Controller
 
         $payment = TogaPayment::create($validated);
 
-        Cache::forget("toga_payments_dept_{$payment->toga_department_id}");
-        Cache::forget('toga_stats');
+        CacheService::clearTogaCache();
 
         return response()->json([
             'message' => 'Payment created successfully',
@@ -328,8 +324,7 @@ class TogaRentalController extends Controller
 
         $payment->update($validated);
 
-        Cache::forget("toga_payments_dept_{$payment->toga_department_id}");
-        Cache::forget('toga_stats');
+        CacheService::clearTogaCache();
 
         return response()->json([
             'message' => 'Payment updated successfully',
@@ -347,8 +342,7 @@ class TogaRentalController extends Controller
         
         $payment->delete();
 
-        Cache::forget("toga_payments_dept_{$departmentId}");
-        Cache::forget('toga_stats');
+        CacheService::clearTogaCache();
 
         return response()->json([
             'message' => 'Payment deleted successfully'
@@ -380,3 +374,5 @@ class TogaRentalController extends Controller
         return response()->json($stats);
     }
 }
+
+

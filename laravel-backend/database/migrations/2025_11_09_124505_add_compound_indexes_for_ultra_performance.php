@@ -12,6 +12,8 @@ return new class extends Migration
      */
     public function up(): void
     {
+        // Skip - indexes already added by 2025_12_10_070000_add_redis_optimized_indexes
+        return;
         // Helper function to check if index exists
         $indexExists = function($table, $indexName) {
             $indexes = DB::select("SHOW INDEX FROM $table WHERE Key_name = ?", [$indexName]);

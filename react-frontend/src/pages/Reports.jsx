@@ -49,8 +49,8 @@ const Reports = () => {
   const [salesPeriod, setSalesPeriod] = useState('daily'); // 'daily', 'weekly', 'monthly'
   const [activeTab, setActiveTab] = useState('completed'); // 'completed', 'incomplete', 'all'
   const [startDate, setStartDate] = useState(
-    // Default to 3 months ago to show historical completed orders
-    new Date(new Date().setMonth(new Date().getMonth() - 3)).toISOString().split('T')[0]
+    // Default to 6 months ago to ensure we capture all data
+    new Date(new Date().setMonth(new Date().getMonth() - 6)).toISOString().split('T')[0]
   );
   const [endDate, setEndDate] = useState(
     new Date().toISOString().split('T')[0]
@@ -81,7 +81,7 @@ const Reports = () => {
     const unsubscribe = queryClient.getQueryCache().subscribe((event) => {
       if (event?.query?.queryKey?.[0] === 'orders') {
         // When orders change, refresh reports immediately
-        queryClient.invalidateQueries({ queryKey: queryKeys.reports });
+        queryClient.invalidateQueries({ queryKey: ['reports'] });
       }
     });
     
@@ -632,51 +632,66 @@ const Reports = () => {
         <div className="lg:col-span-3 bg-white rounded-2xl shadow-lg p-6 border border-slate-100">
           <div className="flex items-center justify-between mb-6">
             <div>
-              <h2 className="text-xl font-bold text-slate-900">Top Products by Revenue</h2>
-              <p className="text-sm text-slate-500">Best performing products</p>
+              <h2 className="text-xl font-bold text-slate-900">Top Products by Quantity Sold</h2>
+              <p className="text-sm text-slate-500">Best selling products by units</p>
             </div>
           </div>
-          <ResponsiveContainer width="100%" height={330}>
-            <BarChart data={reportData?.top_products || []} margin={{ top: 5, right: 0, bottom: 0, left: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-              <XAxis 
-                dataKey="name" 
-                stroke="#64748b" 
-                height={70}
-                interval={0}
-                tick={({ x, y, payload }) => {
-                  const words = payload.value.split(' ');
-                  return (
-                    <g transform={`translate(${x},${y})`}>
-                      {words.map((word, index) => (
-                        <text
-                          key={index}
-                          x={0}
-                          y={index * 11 + 8}
-                          textAnchor="middle"
-                          fill="#64748b"
-                          fontSize={10}
-                        >
-                          {word}
-                        </text>
-                      ))}
-                    </g>
-                  );
-                }}
-              />
-              <YAxis stroke="#64748b" />
-              <Tooltip
-                contentStyle={{ backgroundColor: '#0f172a', border: 'none', borderRadius: '12px', color: '#fff' }}
-              />
-              <Bar dataKey="revenue" fill="url(#colorGradient)" radius={[10, 10, 0, 0]} name="Revenue (₱)" />
-              <defs>
-                <linearGradient id="colorGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#06b6d4" />
-                  <stop offset="100%" stopColor="#14b8a6" />
-                </linearGradient>
-              </defs>
-            </BarChart>
-          </ResponsiveContainer>
+          {reportData?.top_products && reportData.top_products.length > 0 ? (
+            <ResponsiveContainer width="100%" height={330}>
+              <BarChart data={reportData.top_products} margin={{ top: 5, right: 0, bottom: 0, left: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                <XAxis 
+                  dataKey="name" 
+                  stroke="#64748b" 
+                  height={70}
+                  interval={0}
+                  tick={({ x, y, payload }) => {
+                    const words = payload.value.split(' ');
+                    return (
+                      <g transform={`translate(${x},${y})`}>
+                        {words.map((word, index) => (
+                          <text
+                            key={index}
+                            x={0}
+                            y={index * 11 + 8}
+                            textAnchor="middle"
+                            fill="#64748b"
+                            fontSize={10}
+                          >
+                            {word}
+                          </text>
+                        ))}
+                      </g>
+                    );
+                  }}
+                />
+                <YAxis stroke="#64748b" />
+                <Tooltip
+                  contentStyle={{ backgroundColor: '#0f172a', border: 'none', borderRadius: '12px', color: '#fff' }}
+                  formatter={(value, name, props) => [
+                    `${value} units`,
+                    `Revenue: ₱${props.payload.revenue?.toFixed(2) || '0.00'}`
+                  ]}
+                  labelFormatter={(label) => `Product: ${label}`}
+                />
+                <Bar dataKey="sold" fill="url(#colorGradient)" radius={[10, 10, 0, 0]} name="Units Sold" />
+                <defs>
+                  <linearGradient id="colorGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#06b6d4" />
+                    <stop offset="100%" stopColor="#14b8a6" />
+                  </linearGradient>
+                </defs>
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="flex items-center justify-center h-80 text-slate-500">
+              <div className="text-center">
+                <Package className="w-16 h-16 mx-auto mb-4 text-slate-300" />
+                <p className="text-lg font-medium">No product data available</p>
+                <p className="text-sm">Complete some orders to see top products</p>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Pie Chart - 25% width */}
@@ -688,36 +703,48 @@ const Reports = () => {
             </div>
             <Calendar className="w-6 h-6 text-violet-600" />
           </div>
-          <ResponsiveContainer width="100%" height={180}>
-            <PieChart>
-              <Pie
-                data={reportData?.service_distribution || []}
-                cx="50%"
-                cy="50%"
-                labelLine={false}
-                outerRadius={80}
-                fill="#8884d8"
-                dataKey="value"
-              >
-                {(reportData?.service_distribution || []).map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+          {reportData?.service_distribution && reportData.service_distribution.length > 0 ? (
+            <>
+              <ResponsiveContainer width="100%" height={180}>
+                <PieChart>
+                  <Pie
+                    data={reportData.service_distribution}
+                    cx="50%"
+                    cy="50%"
+                    labelLine={false}
+                    outerRadius={80}
+                    fill="#8884d8"
+                    dataKey="value"
+                  >
+                    {reportData.service_distribution.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="mt-4 space-y-2">
+                {reportData.service_distribution.map((service, index) => (
+                  <div key={index} className="flex items-center gap-2 text-xs">
+                    <div 
+                      className="w-3 h-3 rounded-full" 
+                      style={{ backgroundColor: COLORS[index % COLORS.length] }}
+                    ></div>
+                    <div className="flex-1 truncate">{service.name}</div>
+                    <div className="font-bold">{service.value}</div>
+                  </div>
                 ))}
-              </Pie>
-              <Tooltip />
-            </PieChart>
-          </ResponsiveContainer>
-          <div className="mt-4 space-y-2">
-            {(reportData?.service_distribution || []).map((service, index) => (
-              <div key={index} className="flex items-center gap-2 text-xs">
-                <div 
-                  className="w-3 h-3 rounded-full" 
-                  style={{ backgroundColor: COLORS[index % COLORS.length] }}
-                ></div>
-                <div className="flex-1 truncate">{service.name}</div>
-                <div className="font-bold">{service.value}</div>
               </div>
-            ))}
-          </div>
+            </>
+          ) : (
+            <div className="flex items-center justify-center h-60 text-slate-500">
+              <div className="text-center">
+                <Calendar className="w-12 h-12 mx-auto mb-3 text-slate-300" />
+                <p className="text-sm font-medium">No category data</p>
+                <p className="text-xs">Complete orders to see distribution</p>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -778,7 +805,7 @@ const Reports = () => {
           >
             <div className="flex items-center gap-2">
               <Clock className="w-4 h-4" />
-              <span>Pending/In Progress</span>
+              <span>Pending</span>
               <span className="ml-2 px-2 py-0.5 bg-amber-100 text-amber-700 text-xs rounded-full">
                 {getIncompleteTransactions().length}
               </span>
@@ -798,7 +825,7 @@ const Reports = () => {
           >
             <div className="flex items-center gap-2">
               <XCircle className="w-4 h-4" />
-              <span>Cancelled</span>
+              <span>Void/Cancelled</span>
               <span className="ml-2 px-2 py-0.5 bg-red-100 text-red-700 text-xs rounded-full">
                 {getCancelledTransactions().length}
               </span>

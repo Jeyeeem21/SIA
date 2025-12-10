@@ -101,12 +101,14 @@ class SalesAnalyticsController extends Controller
         $startOfDay = $date->copy()->startOfDay();
         $endOfDay = $date->copy()->endOfDay();
 
-        // Sum total_amount from orders created today (regardless of status for POS)
+        // Sum total_amount from orders created today (exclude voided orders)
         $sales = Order::whereBetween('created_at', [$startOfDay, $endOfDay])
+            ->where('is_voided', false)
             ->sum('total_amount');
 
-        // Count UNIQUE orders created today (not order items!)
+        // Count UNIQUE orders created today (exclude voided orders)
         $orders = Order::whereBetween('created_at', [$startOfDay, $endOfDay])
+            ->where('is_voided', false)
             ->count();
 
         return [
@@ -121,12 +123,14 @@ class SalesAnalyticsController extends Controller
         $startOfMonth = $date->copy()->startOfMonth();
         $endOfMonth = $date->copy()->endOfMonth();
 
-        // Sum total_amount from orders created this month
+        // Sum total_amount from orders created this month (exclude voided orders)
         $sales = Order::whereBetween('created_at', [$startOfMonth, $endOfMonth])
+            ->where('is_voided', false)
             ->sum('total_amount');
 
-        // Count UNIQUE orders created this month
+        // Count UNIQUE orders created this month (exclude voided orders)
         $orders = Order::whereBetween('created_at', [$startOfMonth, $endOfMonth])
+            ->where('is_voided', false)
             ->count();
 
         return [
@@ -141,12 +145,14 @@ class SalesAnalyticsController extends Controller
         $startOfYear = $date->copy()->startOfYear();
         $endOfYear = $date->copy()->endOfYear();
 
-        // Sum total_amount from orders created this year
+        // Sum total_amount from orders created this year (exclude voided orders)
         $sales = Order::whereBetween('created_at', [$startOfYear, $endOfYear])
+            ->where('is_voided', false)
             ->sum('total_amount');
 
-        // Count UNIQUE orders created this year
+        // Count UNIQUE orders created this year (exclude voided orders)
         $orders = Order::whereBetween('created_at', [$startOfYear, $endOfYear])
+            ->where('is_voided', false)
             ->count();
 
         return [

@@ -2,7 +2,7 @@ import { Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useEffect } from 'react';
 
-const ProtectedRoute = ({ children, requireAdmin = false }) => {
+const ProtectedRoute = ({ children, requireAdmin = false, requireStaff = false }) => {
   const { user, loading, isAdmin, isStaff, logout } = useAuth();
 
   // Check token expiry on every route access
@@ -43,6 +43,11 @@ const ProtectedRoute = ({ children, requireAdmin = false }) => {
   // If route requires admin but user is staff, redirect to POS
   if (requireAdmin && isStaff) {
     return <Navigate to="/pos" replace />;
+  }
+
+  // If route requires staff but user is admin, redirect to dashboard
+  if (requireStaff && isAdmin) {
+    return <Navigate to="/dashboard" replace />;
   }
 
   return children;

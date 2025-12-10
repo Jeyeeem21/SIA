@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Product;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use App\Services\CacheService;
 
 class ProductController extends Controller
 {
@@ -71,6 +72,8 @@ class ProductController extends Controller
         $product->is_active = $isNotExpired && $hasStock;
         $product->save();
         
+        CacheService::clearProductCache();
+        
         return response()->json($product->load('category', 'inventory'), 201);
     }
 
@@ -112,6 +115,9 @@ class ProductController extends Controller
         $hasStock = $product->inventory->quantity > 0;
         $product->is_active = $isNotExpired && $hasStock;
         $product->save();
+        
+        CacheService::clearProductCache();
+        
         return response()->json($product->load('category'));
     }
 
@@ -124,6 +130,9 @@ class ProductController extends Controller
         // Delete the product - historical records in order_items will remain intact
         // due to foreign key constraint using SET NULL or CASCADE behavior
         $product->delete();
+        
+        CacheService::clearProductCache();
+        
         return response()->json(['message' => 'Product deleted successfully']);
     }
 }

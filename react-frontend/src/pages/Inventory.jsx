@@ -55,29 +55,29 @@ const Inventory = () => {
   const deleteMutation = useDeleteInventory();
 
   // Fetch sales history with React Query - REALTIME updates
-  const { data: salesHistory = [], isLoading: salesLoading } = useQuery({
-    queryKey: queryKeys.salesHistory(selectedPeriod),
+  const { data: salesHistory = [], isLoading: salesLoading, isFetching: salesFetching } = useQuery({
+    queryKey: ['salesHistory', selectedPeriod],
     queryFn: async () => {
       const response = await ordersAPI.getSalesHistory({ period: selectedPeriod });
       return response.data;
     },
-    staleTime: 0, // Always fresh - instant updates
-    refetchInterval: 5000, // Real-time updates every 5 seconds
-    refetchOnWindowFocus: true, // Refetch when switching to this page
-    refetchIntervalInBackground: false, // Don't refetch when not visible
+    staleTime: 0,
+    cacheTime: 0,
+    refetchOnWindowFocus: false,
+    enabled: true,
   });
 
   // Fetch growth rates with React Query - INSTANT updates!
-  const { data: growthData, isLoading: growthLoading } = useQuery({
-    queryKey: queryKeys.growthRates(selectedPeriod),
+  const { data: growthData, isLoading: growthLoading, isFetching: growthFetching } = useQuery({
+    queryKey: ['growthRates', selectedPeriod],
     queryFn: async () => {
       const response = await productTransactionsAPI.getGrowthRates(selectedPeriod);
       return response.data;
     },
-    staleTime: 0, // Always fresh - instant updates
-    refetchInterval: 5000, // Real-time updates every 5 seconds
-    refetchOnWindowFocus: true, // Refetch when switching to this page
-    refetchIntervalInBackground: false, // Don't refetch when not visible
+    staleTime: 0,
+    cacheTime: 0,
+    refetchOnWindowFocus: false,
+    enabled: true,
   });
 
   // Edit fields (no quantity - use Restock for that!)
@@ -443,18 +443,22 @@ const Inventory = () => {
 
         {/* Period Info */}
         {growthData && (
-          <div className="bg-gradient-to-r from-cyan-50 to-blue-50 rounded-lg p-4 mb-6 border border-cyan-100">
-            <div className="flex items-center justify-between text-sm">
-              <div>
-                <span className="font-semibold text-slate-700">Current Period:</span>
+          <div key={selectedPeriod} className="bg-gradient-to-r from-cyan-50 to-blue-50 rounded-lg p-4 mb-6 border border-cyan-100">
+            <div className="flex items-center justify-between flex-wrap gap-4 text-sm">
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-slate-700">
+                  {selectedPeriod === 'daily' ? 'Today:' : selectedPeriod === 'monthly' ? 'Current Month:' : 'Current Year:'}
+                </span>
                 <span className="ml-2 text-cyan-700 font-bold">
-                  {new Date(growthData.current_period.start).toLocaleDateString()} - {new Date(growthData.current_period.end).toLocaleDateString()}
+                  {new Date(growthData.current_period.start).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} - {new Date(growthData.current_period.end).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                 </span>
               </div>
               <div>
-                <span className="font-semibold text-slate-700">Previous Period:</span>
+                <span className="font-semibold text-slate-700">
+                  {selectedPeriod === 'daily' ? 'Yesterday:' : selectedPeriod === 'monthly' ? 'Last Month:' : 'Last Year:'}
+                </span>
                 <span className="ml-2 text-slate-600 font-bold">
-                  {new Date(growthData.previous_period.start).toLocaleDateString()} - {new Date(growthData.previous_period.end).toLocaleDateString()}
+                  {new Date(growthData.previous_period.start).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} - {new Date(growthData.previous_period.end).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                 </span>
               </div>
             </div>
@@ -470,15 +474,13 @@ const Inventory = () => {
                 <th className="px-6 py-4 text-center text-xs font-bold text-white uppercase tracking-wider">Current Stock</th>
                 <th className="px-6 py-4 text-center text-xs font-bold text-white uppercase tracking-wider">Current IN</th>
                 <th className="px-6 py-4 text-center text-xs font-bold text-white uppercase tracking-wider">Current OUT</th>
-                <th className="px-6 py-4 text-center text-xs font-bold text-white uppercase tracking-wider">Net Movement</th>
-                <th className="px-6 py-4 text-center text-xs font-bold text-white uppercase tracking-wider">Previous Net</th>
                 <th className="px-6 py-4 text-center text-xs font-bold text-white uppercase tracking-wider">Growth Rate</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-slate-200">
               {growthLoading ? (
                 <tr>
-                  <td colSpan="7" className="px-6 py-12 text-center">
+                  <td colSpan="5" className="px-6 py-12 text-center">
                     <div className="flex justify-center items-center gap-2">
                       <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-cyan-600"></div>
                       <span className="text-slate-600">Loading growth data...</span>
@@ -487,7 +489,7 @@ const Inventory = () => {
                 </tr>
               ) : !growthData || !growthData.products || growthData.products.length === 0 ? (
                 <tr>
-                  <td colSpan="7" className="px-6 py-12 text-center text-slate-500">
+                  <td colSpan="5" className="px-6 py-12 text-center text-slate-500">
                     No transaction data available
                   </td>
                 </tr>
@@ -512,16 +514,6 @@ const Inventory = () => {
                     <td className="px-6 py-4 whitespace-nowrap text-center">
                       <span className="inline-flex items-center gap-1 px-3 py-1 bg-rose-100 text-rose-700 text-sm font-bold rounded-lg">
                         -{product.current_out}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-center">
-                      <span className={`text-sm font-bold ${product.current_net >= 0 ? 'text-teal-600' : 'text-rose-600'}`}>
-                        {product.current_net >= 0 ? '+' : ''}{product.current_net}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-center">
-                      <span className={`text-sm font-semibold ${product.previous_net >= 0 ? 'text-slate-600' : 'text-slate-400'}`}>
-                        {product.previous_net >= 0 ? '+' : ''}{product.previous_net}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-center">

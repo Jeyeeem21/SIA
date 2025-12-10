@@ -12,6 +12,8 @@ return new class extends Migration
      */
     public function up(): void
     {
+        // Skip - indexes already added by 2025_12_10_070000_add_redis_optimized_indexes
+        return;
         // Orders table optimization - critical for dashboard and reports
         try {
             Schema::table('orders', function (Blueprint $table) {

@@ -140,7 +140,8 @@ export const usePrefetch = () => {
       queryKey: queryKeys.reportsSummary,
       queryFn: async () => {
         try {
-          const response = await reportsAPI.getSummary();
+          // reportsAPI provides getReports(), not getSummary()
+          const response = await reportsAPI.getReports();
           return response.data;
         } catch (error) {
           console.warn('Prefetch reports failed:', error.message);

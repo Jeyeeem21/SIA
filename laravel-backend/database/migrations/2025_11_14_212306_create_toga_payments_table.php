@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (!Schema::hasTable('toga_payments_duplicate')) {
+            // Skip - this is a duplicate, using earlier migration
+            return;
+        }
         Schema::create('toga_payments', function (Blueprint $table) {
             $table->id();
             $table->foreignId('toga_department_id')->constrained('toga_departments')->onDelete('cascade');

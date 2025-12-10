@@ -12,9 +12,11 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('order_items', function (Blueprint $table) {
-            $table->string('product_name')->nullable()->after('product_id');
-        });
+        if (!Schema::hasColumn('order_items', 'product_name')) {
+            Schema::table('order_items', function (Blueprint $table) {
+                $table->string('product_name')->nullable()->after('product_id');
+            });
+        }
         
         // Backfill existing order_items with product names
         DB::statement('

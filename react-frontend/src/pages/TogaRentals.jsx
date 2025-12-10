@@ -21,6 +21,7 @@
  */
 
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import {
   GraduationCap,
@@ -54,9 +55,12 @@ import Pagination from '../components/Pagination';
 import Modal from '../components/Modal';
 import ConfirmModal from '../components/ConfirmModal';
 import * as togaRentalService from '../services/togaRentalService';
+import { useAuth } from '../contexts/AuthContext';
 
 const TogaRentals = () => {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const { user } = useAuth();
   
   // State Management
   const [mainView, setMainView] = useState('departments'); // 'departments', 'students', 'payments'
@@ -66,6 +70,7 @@ const TogaRentals = () => {
   const [filterStatus, setFilterStatus] = useState('All');
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [selectedSystem, setSelectedSystem] = useState('Toga Rental');
 
   // Modal states
   const [showAddDeptModal, setShowAddDeptModal] = useState(false);
@@ -77,6 +82,7 @@ const TogaRentals = () => {
   const [showDeleteStudentModal, setShowDeleteStudentModal] = useState(false);
   const [showAddPaymentModal, setShowAddPaymentModal] = useState(false);
   const [showMarkPaidModal, setShowMarkPaidModal] = useState(false);
+  const [showMarkReturnedModal, setShowMarkReturnedModal] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
 
   // Fetch departments with React Query - REAL-TIME!
@@ -212,6 +218,7 @@ const TogaRentals = () => {
     onSuccess: () => {
       queryClient.invalidateQueries(['toga-departments']);
       queryClient.invalidateQueries(['toga-stats']);
+      queryClient.invalidateQueries(['toga-rentals', selectedDepartment?.id]);
     },
     onError: (error, variables, context) => {
       // Rollback on error
@@ -292,19 +299,35 @@ const TogaRentals = () => {
   });
 
   // Get current students and payments from API
-  // Show all students but make unique by student_number (keep most recent)
-  const allRentals = rentalsData || [];
-  
-  // Remove duplicates: keep only the most recent rental for each student_number
-  const uniqueStudentMap = new Map();
-  allRentals.forEach(rental => {
-    const existing = uniqueStudentMap.get(rental.student_number);
-    if (!existing || new Date(rental.created_at) > new Date(existing.created_at)) {
-      uniqueStudentMap.set(rental.student_number, rental);
+  // Helper function to check rental status based on dates
+  const getRentalStatus = (rental) => {
+    if (!rental || !rental.return_date) {
+      return { status: rental?.status || 'Unknown', note: null };
     }
-  });
-  
-  const currentStudents = Array.from(uniqueStudentMap.values()).sort((a, b) => 
+
+    // If already returned, show as returned
+    if (rental.status === 'Returned') {
+      return { status: 'Returned', note: 'Returned' };
+    }
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const returnDate = new Date(rental.return_date);
+    returnDate.setHours(0, 0, 0, 0);
+
+    if (returnDate < today) {
+      return { status: 'Overdue', note: 'Overdue - Return date has passed' };
+    } else if (returnDate.getTime() === today.getTime()) {
+      return { status: rental.status || 'Active', note: 'Due today - Should be returned' };
+    } else {
+      return { status: rental.status || 'Active', note: null };
+    }
+  };
+
+  // Show all rentals (no deduplication)
+  const allRentals = (rentalsData || []).filter(rental => rental && rental.student_number);
+
+  const currentStudents = allRentals.sort((a, b) =>
     new Date(b.created_at) - new Date(a.created_at)
   );
   
@@ -313,9 +336,9 @@ const TogaRentals = () => {
   // Calculate statistics
   const stats = selectedDepartment ? {
     totalRentals: currentStudents.length,
-    activeRentals: currentStudents.filter(s => s.status === 'Active').length,
-    returned: currentStudents.filter(s => s.status === 'Returned').length,
-    overdue: currentStudents.filter(s => s.status === 'Overdue').length,
+    activeRentals: currentStudents.filter(s => getRentalStatus(s).status === 'Active').length,
+    returned: currentStudents.filter(s => getRentalStatus(s).status === 'Returned').length,
+    overdue: currentStudents.filter(s => getRentalStatus(s).status === 'Overdue').length,
     revenue: currentStudents.reduce((sum, s) => sum + (parseFloat(s.rental_fee) || 0), 0),
     totalPayments: currentPayments.length,
     paidPayments: currentPayments.filter(p => p.status === 'Paid').length,
@@ -334,18 +357,18 @@ const TogaRentals = () => {
 
   // Filter data based on view
   const filteredStudents = currentStudents.filter(student => {
-    const matchesSearch = 
-      student.student_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      student.student_number.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesFilter = filterStatus === 'All' || student.status === filterStatus;
+    const matchesSearch =
+      (student.student_name?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+      (student.student_number?.toLowerCase() || '').includes(searchTerm.toLowerCase());
+    const matchesFilter = filterStatus === 'All' || getRentalStatus(student).status === filterStatus;
     return matchesSearch && matchesFilter;
   });
 
   const filteredPayments = currentPayments.filter(payment => {
     const matchesSearch = 
-      payment.student_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      payment.student_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      payment.payment_number.toLowerCase().includes(searchTerm.toLowerCase());
+      (payment.student_name?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+      (payment.student_number?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+      (payment.payment_number?.toLowerCase() || '').includes(searchTerm.toLowerCase());
     const matchesFilter = filterStatus === 'All' || payment.status === filterStatus;
     return matchesSearch && matchesFilter;
   });
@@ -421,6 +444,31 @@ const TogaRentals = () => {
     <div className="p-8 bg-gradient-to-br from-slate-50 via-cyan-50/30 to-teal-50/20 min-h-full">
       {/* Header */}
       <div className="mb-8">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-4">
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-1">System</label>
+              <select
+                value={selectedSystem}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setSelectedSystem(value);
+                  if (value === 'POS') {
+                    navigate('/pos');
+                  } else if (value === 'Rental') {
+                    navigate('/rentals');
+                  }
+                  // Toga Rental stays on current page
+                }}
+                className="px-4 py-2 border-2 border-slate-200 rounded-xl focus:border-cyan-500 focus:outline-none text-slate-900 bg-white font-medium"
+              >
+                <option value="POS">POS (Products)</option>
+                <option value="Rental">Rental</option>
+                <option value="Toga Rental">Toga Rental</option>
+              </select>
+            </div>
+          </div>
+        </div>
         <div className="flex items-center gap-3 mb-2">
           <div className="p-3 bg-gradient-to-br from-cyan-500 to-teal-600 rounded-xl shadow-lg">
             <GraduationCap className="w-6 h-6 text-white" />
@@ -725,7 +773,6 @@ const TogaRentals = () => {
                     <th className="px-6 py-4 text-center text-xs font-bold text-slate-700 uppercase tracking-wider">Return Date</th>
                     <th className="px-6 py-4 text-center text-xs font-bold text-slate-700 uppercase tracking-wider">Fee</th>
                     <th className="px-6 py-4 text-center text-xs font-bold text-slate-700 uppercase tracking-wider">Deposit</th>
-                    <th className="px-6 py-4 text-center text-xs font-bold text-slate-700 uppercase tracking-wider">Status</th>
                     <th className="px-6 py-4 text-center text-xs font-bold text-slate-700 uppercase tracking-wider">Actions</th>
                   </>
                 ) : (
@@ -784,28 +831,32 @@ const TogaRentals = () => {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-center">
                         <div className="flex items-center justify-center gap-2">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedItem(dept);
-                              setShowEditDeptModal(true);
-                            }}
-                            className="p-2 text-amber-600 hover:bg-amber-50 rounded-lg transition-all hover:scale-110"
-                            title="Edit Department"
-                          >
-                            <Edit className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedItem(dept);
-                              setShowDeleteDeptModal(true);
-                            }}
-                            className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg transition-all hover:scale-110"
-                            title="Delete Department"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          {user?.role?.toLowerCase() === 'admin' && (
+                            <>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedItem(dept);
+                                  setShowEditDeptModal(true);
+                                }}
+                                className="p-2 text-amber-600 hover:bg-amber-50 rounded-lg transition-all hover:scale-110"
+                                title="Edit Department"
+                              >
+                                <Edit className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedItem(dept);
+                                  setShowDeleteDeptModal(true);
+                                }}
+                                className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg transition-all hover:scale-110"
+                                title="Delete Department"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -813,17 +864,18 @@ const TogaRentals = () => {
                 })
               ) : activeStudentTab === 'students' ? (
                 currentItems.map((rental) => {
-                  const StatusIcon = getStatusIcon(rental.status);
+                  const rentalStatus = getRentalStatus(rental);
+                  const StatusIcon = getStatusIcon(rentalStatus.status);
                   return (
                     <tr key={rental.id} className="hover:bg-slate-50 transition-colors">
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 bg-gradient-to-br from-cyan-500 to-teal-600 rounded-full flex items-center justify-center text-white font-bold">
-                            {rental.student_name?.charAt(0) || 'S'}
+                            {String(rental.student_name)?.charAt(0) || 'S'}
                           </div>
                           <div>
                             <div className="flex items-center gap-2">
-                              <div className="text-sm font-semibold text-slate-900">{rental.student_name || 'N/A'}</div>
+                              <div className="text-sm font-semibold text-slate-900">{String(rental.student_name || 'N/A')}</div>
                               {rental.payment_status === 'Paid' && (
                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-bold rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200">
                                   <CheckCircle className="w-3 h-3" />
@@ -831,16 +883,16 @@ const TogaRentals = () => {
                                 </span>
                               )}
                             </div>
-                            <div className="text-xs text-slate-500">{rental.contact_number || 'N/A'}</div>
+                            <div className="text-xs text-slate-500">{String(rental.contact_number || 'N/A')}</div>
                           </div>
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">
-                        {rental.student_number}
+                        {String(rental.student_number || 'N/A')}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-center">
                         <span className="inline-flex px-3 py-1 text-xs font-semibold rounded-full bg-slate-100 text-slate-700">
-                          {rental.size}
+                          {String(rental.size || 'N/A')}
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-center text-sm text-slate-600">
@@ -850,16 +902,10 @@ const TogaRentals = () => {
                         {new Date(rental.return_date).toLocaleDateString()}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-bold text-slate-900">
-                        ₱{rental.rental_fee?.toLocaleString() || '0'}
+                        ₱{Number(rental.rental_fee || 0).toLocaleString()}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium text-slate-600">
-                        ₱{rental.deposit?.toLocaleString() || '0'}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-center">
-                        <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border ${getStatusBadge(rental.status)}`}>
-                          <StatusIcon className="w-3.5 h-3.5" />
-                          {rental.status}
-                        </span>
+                        ₱{Number(rental.deposit || 0).toLocaleString()}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-center">
                         <div className="flex items-center justify-center gap-2">
@@ -868,41 +914,50 @@ const TogaRentals = () => {
                               setSelectedItem(rental);
                               setShowMarkPaidModal(true);
                             }}
-                            className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all hover:scale-110"
+                            className={`p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all hover:scale-110 ${rental.payment_status === 'Paid' ? 'opacity-50 cursor-not-allowed pointer-events-none' : ''}`}
                             title="Mark as Paid"
+                            disabled={rental.payment_status === 'Paid'}
                           >
                             <DollarSign className="w-4 h-4" />
                           </button>
                           <button
                             onClick={() => {
                               setSelectedItem(rental);
-                              setShowViewStudentModal(true);
+                              setShowMarkReturnedModal(true);
                             }}
-                            className="p-2 text-cyan-600 hover:bg-cyan-50 rounded-lg transition-all hover:scale-110"
-                            title="View Details"
+                            className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-all hover:scale-110"
+                            title="Mark as Returned"
+                            disabled={rental.status === 'Returned'}
+                            style={{ opacity: rental.status === 'Returned' ? 0.5 : 1, pointerEvents: rental.status === 'Returned' ? 'none' : 'auto' }}
                           >
-                            <Eye className="w-4 h-4" />
+                            <CheckCircle className="w-4 h-4" />
                           </button>
-                          <button
-                            onClick={() => {
-                              setSelectedItem(rental);
-                              setShowEditStudentModal(true);
-                            }}
-                            className="p-2 text-amber-600 hover:bg-amber-50 rounded-lg transition-all hover:scale-110"
-                            title="Edit"
-                          >
-                            <Edit className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => {
-                              setSelectedItem(rental);
-                              setShowDeleteStudentModal(true);
-                            }}
-                            className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg transition-all hover:scale-110"
-                            title="Delete"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          {user?.role?.toLowerCase() === 'admin' && (
+                            <>
+                              <button
+                                onClick={() => {
+                                  setSelectedItem(rental);
+                                  setShowEditStudentModal(true);
+                                }}
+                                className={`p-2 text-amber-600 hover:bg-amber-50 rounded-lg transition-all hover:scale-110 ${rental.payment_status === 'Paid' ? 'opacity-50 cursor-not-allowed pointer-events-none' : ''}`}
+                                title="Edit"
+                                disabled={rental.payment_status === 'Paid'}
+                              >
+                                <Edit className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setSelectedItem(rental);
+                                  setShowDeleteStudentModal(true);
+                                }}
+                                className={`p-2 text-rose-600 hover:bg-rose-50 rounded-lg transition-all hover:scale-110 ${rental.payment_status === 'Paid' ? 'opacity-50 cursor-not-allowed pointer-events-none' : ''}`}
+                                title="Delete"
+                                disabled={rental.payment_status === 'Paid'}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -949,31 +1004,35 @@ const TogaRentals = () => {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-center">
                         <div className="flex items-center justify-center gap-2">
-                          {payment.status === 'Paid' && (
-                            <button
-                              onClick={() => {
-                                // Mark as unpaid by deleting payment
-                                if (window.confirm('Mark this payment as unpaid? This will remove the payment record.')) {
-                                  deletePaymentMutation.mutate(payment.id);
-                                }
-                              }}
-                              className="p-2 text-amber-600 hover:bg-amber-50 rounded-lg transition-all hover:scale-110"
-                              title="Mark as Unpaid"
-                            >
-                              <XCircle className="w-4 h-4" />
-                            </button>
+                          {user?.role?.toLowerCase() === 'admin' && (
+                            <>
+                              {payment.status === 'Paid' && (
+                                <button
+                                  onClick={() => {
+                                    // Mark as unpaid by deleting payment
+                                    if (window.confirm('Mark this payment as unpaid? This will remove the payment record.')) {
+                                      deletePaymentMutation.mutate(payment.id);
+                                    }
+                                  }}
+                                  className="p-2 text-amber-600 hover:bg-amber-50 rounded-lg transition-all hover:scale-110"
+                                  title="Mark as Unpaid"
+                                >
+                                  <XCircle className="w-4 h-4" />
+                                </button>
+                              )}
+                              <button
+                                onClick={() => {
+                                  if (window.confirm('Delete this payment record?')) {
+                                    deletePaymentMutation.mutate(payment.id);
+                                  }
+                                }}
+                                className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg transition-all hover:scale-110"
+                                title="Delete Payment"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </>
                           )}
-                          <button
-                            onClick={() => {
-                              if (window.confirm('Delete this payment record?')) {
-                                deletePaymentMutation.mutate(payment.id);
-                              }
-                            }}
-                            className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg transition-all hover:scale-110"
-                            title="Delete Payment"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
                         </div>
                       </td>
                     </tr>
@@ -1204,7 +1263,7 @@ const TogaRentals = () => {
         title="Delete Department"
         message={`Are you sure you want to delete ${selectedItem?.name}? This action cannot be undone.`}
         confirmText="Delete"
-        confirmStyle="danger"
+        type="danger"
       />
 
       {/* Add Student Modal */}
@@ -1226,7 +1285,7 @@ const TogaRentals = () => {
             return_date: formData.get('return_date'),
             rental_fee: parseFloat(formData.get('rental_fee')),
             deposit: parseFloat(formData.get('deposit')),
-            status: formData.get('status'),
+            status: 'Active',
             payment_status: 'Pending',
           });
         }}>
@@ -1664,7 +1723,7 @@ const TogaRentals = () => {
         title="Delete Student Rental"
         message={`Are you sure you want to delete the rental record for ${selectedItem?.student_name}? This action cannot be undone.`}
         confirmText="Delete"
-        confirmStyle="danger"
+        type="danger"
       />
 
       {/* Add Payment Modal */}
@@ -1964,6 +2023,39 @@ const TogaRentals = () => {
           </form>
         </div>
       </Modal>
+
+      {/* Mark as Returned Modal */}
+      <ConfirmModal
+        isOpen={showMarkReturnedModal}
+        onClose={() => {
+          setShowMarkReturnedModal(false);
+          setSelectedItem(null);
+        }}
+        onConfirm={() => {
+          updateRentalMutation.mutate({
+            id: selectedItem.id,
+            data: {
+              student_name: selectedItem.student_name,
+              student_number: selectedItem.student_number,
+              contact_number: selectedItem.contact_number,
+              size: selectedItem.size,
+              rental_date: selectedItem.rental_date,
+              return_date: selectedItem.return_date,
+              rental_fee: selectedItem.rental_fee,
+              deposit: selectedItem.deposit,
+              status: 'Returned',
+              payment_status: selectedItem.payment_status,
+            }
+          });
+          setShowMarkReturnedModal(false);
+          setSelectedItem(null);
+        }}
+        title="Mark as Returned"
+        message={`Are you sure you want to mark this rental as returned? This will update the status to "Returned".`}
+        confirmText="Mark as Returned"
+        type="success"
+      />
+
     </div>
   );
 };

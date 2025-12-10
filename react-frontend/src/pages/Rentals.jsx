@@ -76,6 +76,7 @@
  */
 
 import { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import {
   Building2,
@@ -100,6 +101,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { rentalsAPI } from '../services/api';
+import { useAuth } from '../contexts/AuthContext';
 import Pagination from '../components/Pagination';
 import Modal from '../components/Modal';
 import ConfirmModal from '../components/ConfirmModal';
@@ -107,6 +109,8 @@ import PageLoadingSpinner from '../components/PageLoadingSpinner';
 
 const Rentals = () => {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const navigate = useNavigate();
   
   // State Management
   const [activeTab, setActiveTab] = useState('properties'); // 'properties', 'tenants', 'contracts', 'payments', 'maintenance'
@@ -114,6 +118,7 @@ const Rentals = () => {
   const [filterStatus, setFilterStatus] = useState('All');
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [selectedSystem, setSelectedSystem] = useState('Rental');
 
   // React Query - Fetch all rental data with 1-second real-time updates
   const { data: properties = [], isLoading: propertiesLoading } = useQuery({
@@ -285,6 +290,15 @@ const Rentals = () => {
 
   // Edit Property Modal State
   const [showEditPropertyModal, setShowEditPropertyModal] = useState(false);
+  const [editPropertyData, setEditPropertyData] = useState({
+    name: '',
+    stall_number: '',
+    type: '',
+    location: '',
+    size: '',
+    monthly_rate: '',
+    status: ''
+  });
 
   // Delete Property Modal State
   const [showDeletePropertyModal, setShowDeletePropertyModal] = useState(false);
@@ -338,8 +352,8 @@ const Rentals = () => {
       const normalizedInput = stallNumberInput.toLowerCase().trim();
       const existingPropertyId = stallNumbersMap.get(normalizedInput);
       
-      // Check if duplicate (and not the current property being edited)
-      const isDuplicate = existingPropertyId && existingPropertyId !== editingItem?.id;
+      // Check if duplicate (skip validation when editing the same property)
+      const isDuplicate = existingPropertyId && (!editingItem || existingPropertyId !== editingItem.id);
 
       if (isDuplicate) {
         setStallNumberError('This stall number is already taken. Please use a different stall number.');
@@ -417,6 +431,7 @@ const Rentals = () => {
     monthlyRevenue: properties
       .filter(p => p.status === 'Occupied')
       .reduce((sum, p) => sum + (parseFloat(p.monthlyRate) || 0), 0),
+    pendingContracts: contracts.filter(c => c.status === 'Pending').length,
     pendingPayments: payments.filter(p => p.status === 'Pending').length,
     pendingMaintenance: maintenanceRequests.filter(m => m.status === 'Pending').length
   };
@@ -483,6 +498,15 @@ const Rentals = () => {
     const propertyId = editingItem.id;
     setShowEditPropertyModal(false);
     setEditingItem(null);
+    setEditPropertyData({
+      name: '',
+      stall_number: '',
+      type: '',
+      location: '',
+      size: '',
+      monthly_rate: '',
+      status: ''
+    });
     
     // Use mutation for instant optimistic update
     updatePropertyMutation.mutate({ id: propertyId, data: formData });
@@ -775,10 +799,37 @@ const Rentals = () => {
     <div className="p-8 bg-gradient-to-br from-slate-50 via-cyan-50/30 to-teal-50/20 min-h-full">
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-4xl font-bold bg-gradient-to-r from-slate-900 via-cyan-800 to-teal-900 bg-clip-text text-transparent mb-2">
-          Rental Property Management
-        </h1>
-        <p className="text-slate-600">Manage school properties, tenants, contracts, and rental payments</p>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-4">
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-1">System</label>
+              <select
+                value={selectedSystem}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setSelectedSystem(value);
+                  if (value === 'POS') {
+                    navigate('/pos');
+                  } else if (value === 'Toga Rental') {
+                    navigate('/toga-rentals');
+                  }
+                  // Rental stays on current page
+                }}
+                className="px-4 py-2 border-2 border-slate-200 rounded-xl focus:border-cyan-500 focus:outline-none text-slate-900 bg-white font-medium"
+              >
+                <option value="POS">POS (Products)</option>
+                <option value="Rental">Rental</option>
+                <option value="Toga Rental">Toga Rental</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        <div>
+          <h1 className="text-4xl font-bold bg-gradient-to-r from-slate-900 via-cyan-800 to-teal-900 bg-clip-text text-transparent mb-2">
+            Rental Property Management
+          </h1>
+          <p className="text-slate-600">Manage school properties, tenants, contracts, and rental payments</p>
+        </div>
       </div>
 
       {/* Analytics Cards with Hover Effects */}
@@ -872,17 +923,12 @@ const Rentals = () => {
             </div>
             <h3 className="text-slate-500 text-sm font-semibold uppercase tracking-wider mb-1">Pending Items</h3>
             <p className="text-3xl font-bold text-slate-900 group-hover:scale-105 transition-transform duration-300">
-              {stats.pendingPayments + stats.pendingMaintenance}
+              {stats.pendingContracts}
             </p>
             <div className="text-sm text-slate-500 mt-2 flex items-center gap-2">
               <span className="flex items-center gap-1">
-                <DollarSign className="w-4 h-4 text-amber-600" />
-                {stats.pendingPayments} Payments
-              </span>
-              <span className="text-slate-300">•</span>
-              <span className="flex items-center gap-1">
-                <Wrench className="w-4 h-4 text-amber-600" />
-                {stats.pendingMaintenance} Maintenance
+                <FileText className="w-4 h-4 text-amber-600" />
+                {stats.pendingContracts} Contracts
               </span>
             </div>
           </div>
@@ -1069,7 +1115,7 @@ const Rentals = () => {
               location: formData.get('location'),
               size: formData.get('size'),
               monthly_rate: formData.get('monthly_rate'),
-              status: formData.get('status')
+              status: 'Vacant'
             };
             handleCreateProperty(propertyData);
           }}>
@@ -1112,14 +1158,6 @@ const Rentals = () => {
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Monthly Rate (₱)</label>
                 <input name="monthly_rate" type="number" min="0" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" required />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Status</label>
-                <select name="status" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-500" required>
-                  <option value="Occupied">Occupied</option>
-                  <option value="Vacant">Vacant</option>
-                  <option value="Under Maintenance">Under Maintenance</option>
-                </select>
               </div>
             </div>
             <div className="flex justify-end gap-2 pt-4">
@@ -1580,20 +1618,31 @@ const Rentals = () => {
                       onClick={() => {
                         setEditingItem(property);
                         setStallNumberInput(property.stall_number || '');
+                        setEditPropertyData({
+                          name: property.name || '',
+                          stall_number: property.stall_number || '',
+                          type: property.type || '',
+                          location: property.location || '',
+                          size: property.size || '',
+                          monthly_rate: property.monthlyRate || '',
+                          status: property.status || ''
+                        });
                         setShowEditPropertyModal(true);
                       }}
                     >
                       <Edit className="w-4 h-4" />
                     </button>
-                    <button
-                      className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-                      onClick={() => {
-                        setEditingItem(property);
-                        setShowDeletePropertyModal(true);
-                      }}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    {user?.role?.toLowerCase() === 'admin' && (
+                      <button
+                        className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                        onClick={() => {
+                          setEditingItem(property);
+                          setShowDeletePropertyModal(true);
+                        }}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1650,20 +1699,31 @@ const Rentals = () => {
                           onClick={() => {
                             setEditingItem(property);
                             setStallNumberInput(property.stall_number || '');
+                            setEditPropertyData({
+                              name: property.name || '',
+                              stall_number: property.stall_number || '',
+                              type: property.type || '',
+                              location: property.location || '',
+                              size: property.size || '',
+                              monthly_rate: property.monthlyRate || '',
+                              status: property.status || ''
+                            });
                             setShowEditPropertyModal(true);
                           }}
                         >
                           <Edit className="w-4 h-4" />
                         </button>
-                        <button
-                          className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-                          onClick={() => {
-                            setEditingItem(property);
-                            setShowDeletePropertyModal(true);
-                          }}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        {user?.role?.toLowerCase() === 'admin' && (
+                          <button
+                            className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                            onClick={() => {
+                              setEditingItem(property);
+                              setShowDeletePropertyModal(true);
+                            }}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -1721,8 +1781,8 @@ const Rentals = () => {
 
                 <div className="flex items-center justify-between pt-3 border-t border-slate-100">
                   <div className="text-sm">
-                    <div className="font-semibold text-cyan-600">₱{tenant.depositPaid.toLocaleString()} deposit</div>
-                    <div className="text-slate-500">Last: {tenant.lastPayment}</div>
+                    <div className="font-semibold text-cyan-600">₱{(tenant.depositPaid || 0).toLocaleString()} deposit</div>
+                    <div className="text-slate-500">Last: {tenant.lastPayment || 'N/A'}</div>
                   </div>
                   <div className="flex gap-2">
                     <button 
@@ -1731,24 +1791,28 @@ const Rentals = () => {
                     >
                       <Eye className="w-4 h-4" />
                     </button>
-                    <button
-                      className="p-2 text-slate-600 hover:bg-slate-50 rounded-lg transition-colors"
-                      onClick={() => {
-                        setEditingItem(tenant);
-                        setShowEditTenantModal(true);
-                      }}
-                    >
-                      <Edit className="w-4 h-4" />
-                    </button>
-                    <button
-                      className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-                      onClick={() => {
-                        setEditingItem(tenant);
-                        setShowDeleteTenantModal(true);
-                      }}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    {user?.role?.toLowerCase() === 'admin' && (
+                      <>
+                        <button
+                          className="p-2 text-slate-600 hover:bg-slate-50 rounded-lg transition-colors"
+                          onClick={() => {
+                            setEditingItem(tenant);
+                            setShowEditTenantModal(true);
+                          }}
+                        >
+                          <Edit className="w-4 h-4" />
+                        </button>
+                        <button
+                          className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                          onClick={() => {
+                            setEditingItem(tenant);
+                            setShowDeleteTenantModal(true);
+                          }}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1786,7 +1850,7 @@ const Rentals = () => {
                         {tenant.contractStatus}
                       </span>
                     </td>
-                    <td className="px-6 py-4 text-sm font-semibold text-slate-700">₱{tenant.depositPaid.toLocaleString()}</td>
+                    <td className="px-6 py-4 text-sm font-semibold text-slate-700">₱{(tenant.depositPaid || 0).toLocaleString()}</td>
                     <td className="px-6 py-4 text-sm text-slate-600">{tenant.lastPayment}</td>
                     <td className="px-6 py-4">
                       <div className="flex gap-2">
@@ -1796,24 +1860,28 @@ const Rentals = () => {
                         >
                           <Eye className="w-4 h-4" />
                         </button>
-                        <button
-                          className="p-2 text-slate-600 hover:bg-slate-50 rounded-lg transition-colors"
-                          onClick={() => {
-                            setEditingItem(tenant);
-                            setShowEditTenantModal(true);
-                          }}
-                        >
-                          <Edit className="w-4 h-4" />
-                        </button>
-                        <button
-                          className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-                          onClick={() => {
-                            setEditingItem(tenant);
-                            setShowDeleteTenantModal(true);
-                          }}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        {user?.role?.toLowerCase() === 'admin' && (
+                          <>
+                            <button
+                              className="p-2 text-slate-600 hover:bg-slate-50 rounded-lg transition-colors"
+                              onClick={() => {
+                                setEditingItem(tenant);
+                                setShowEditTenantModal(true);
+                              }}
+                            >
+                              <Edit className="w-4 h-4" />
+                            </button>
+                            <button
+                              className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                              onClick={() => {
+                                setEditingItem(tenant);
+                                setShowDeleteTenantModal(true);
+                              }}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -1876,24 +1944,28 @@ const Rentals = () => {
                     >
                       <Eye className="w-4 h-4" />
                     </button>
-                    <button
-                      className="p-2 text-slate-600 hover:bg-slate-50 rounded-lg transition-colors"
-                      onClick={() => {
-                        setEditingItem(contract);
-                        setShowEditContractModal(true);
-                      }}
-                    >
-                      <Edit className="w-4 h-4" />
-                    </button>
-                    <button
-                      className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-                      onClick={() => {
-                        setEditingItem(contract);
-                        setShowDeleteContractModal(true);
-                      }}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    {user?.role?.toLowerCase() === 'admin' && (
+                      <>
+                        <button
+                          className="p-2 text-slate-600 hover:bg-slate-50 rounded-lg transition-colors"
+                          onClick={() => {
+                            setEditingItem(contract);
+                            setShowEditContractModal(true);
+                          }}
+                        >
+                          <Edit className="w-4 h-4" />
+                        </button>
+                        <button
+                          className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                          onClick={() => {
+                            setEditingItem(contract);
+                            setShowDeleteContractModal(true);
+                          }}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1946,24 +2018,28 @@ const Rentals = () => {
                         >
                           <Eye className="w-4 h-4" />
                         </button>
-                        <button
-                          className="p-2 text-slate-600 hover:bg-slate-50 rounded-lg transition-colors"
-                          onClick={() => {
-                            setEditingItem(contract);
-                            setShowEditContractModal(true);
-                          }}
-                        >
-                          <Edit className="w-4 h-4" />
-                        </button>
-                        <button
-                          className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-                          onClick={() => {
-                            setEditingItem(contract);
-                            setShowDeleteContractModal(true);
-                          }}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        {user?.role?.toLowerCase() === 'admin' && (
+                          <>
+                            <button
+                              className="p-2 text-slate-600 hover:bg-slate-50 rounded-lg transition-colors"
+                              onClick={() => {
+                                setEditingItem(contract);
+                                setShowEditContractModal(true);
+                              }}
+                            >
+                              <Edit className="w-4 h-4" />
+                            </button>
+                            <button
+                              className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                              onClick={() => {
+                                setEditingItem(contract);
+                                setShowDeleteContractModal(true);
+                              }}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -2032,24 +2108,28 @@ const Rentals = () => {
                     >
                       <Eye className="w-4 h-4" />
                     </button>
-                    <button
-                      className="p-2 text-slate-600 hover:bg-slate-50 rounded-lg transition-colors"
-                      onClick={() => {
-                        setEditingItem(payment);
-                        setShowEditPaymentModal(true);
-                      }}
-                    >
-                      <Edit className="w-4 h-4" />
-                    </button>
-                    <button
-                      className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-                      onClick={() => {
-                        setEditingItem(payment);
-                        setShowDeletePaymentModal(true);
-                      }}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    {user?.role?.toLowerCase() === 'admin' && (
+                      <>
+                        <button
+                          className="p-2 text-slate-600 hover:bg-slate-50 rounded-lg transition-colors"
+                          onClick={() => {
+                            setEditingItem(payment);
+                            setShowEditPaymentModal(true);
+                          }}
+                        >
+                          <Edit className="w-4 h-4" />
+                        </button>
+                        <button
+                          className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                          onClick={() => {
+                            setEditingItem(payment);
+                            setShowDeletePaymentModal(true);
+                          }}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </>
+                    )}
                     {payment.status === 'Pending' && (
                       <button className="p-2 text-teal-600 hover:bg-teal-50 rounded-lg transition-colors">
                         <CheckCircle className="w-4 h-4" />
@@ -2101,24 +2181,28 @@ const Rentals = () => {
                         >
                           <Eye className="w-4 h-4" />
                         </button>
-                        <button
-                          className="p-2 text-slate-600 hover:bg-slate-50 rounded-lg transition-colors"
-                          onClick={() => {
-                            setEditingItem(payment);
-                            setShowEditPaymentModal(true);
-                          }}
-                        >
-                          <Edit className="w-4 h-4" />
-                        </button>
-                        <button
-                          className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-                          onClick={() => {
-                            setEditingItem(payment);
-                            setShowDeletePaymentModal(true);
-                          }}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        {user?.role?.toLowerCase() === 'admin' && (
+                          <>
+                            <button
+                              className="p-2 text-slate-600 hover:bg-slate-50 rounded-lg transition-colors"
+                              onClick={() => {
+                                setEditingItem(payment);
+                                setShowEditPaymentModal(true);
+                              }}
+                            >
+                              <Edit className="w-4 h-4" />
+                            </button>
+                            <button
+                              className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                              onClick={() => {
+                                setEditingItem(payment);
+                                setShowDeletePaymentModal(true);
+                              }}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </>
+                        )}
                         {payment.status === 'Pending' && (
                           <button className="p-2 text-teal-600 hover:bg-teal-50 rounded-lg transition-colors">
                             <CheckCircle className="w-4 h-4" />
@@ -2196,24 +2280,28 @@ const Rentals = () => {
                     >
                       <Eye className="w-4 h-4" />
                     </button>
-                    <button
-                      className="p-2 text-slate-600 hover:bg-slate-50 rounded-lg transition-colors"
-                      onClick={() => {
-                        setEditingItem(request);
-                        setShowEditMaintenanceModal(true);
-                      }}
-                    >
-                      <Edit className="w-4 h-4" />
-                    </button>
-                    <button
-                      className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-                      onClick={() => {
-                        setEditingItem(request);
-                        setShowDeleteMaintenanceModal(true);
-                      }}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    {user?.role?.toLowerCase() === 'admin' && (
+                      <>
+                        <button
+                          className="p-2 text-slate-600 hover:bg-slate-50 rounded-lg transition-colors"
+                          onClick={() => {
+                            setEditingItem(request);
+                            setShowEditMaintenanceModal(true);
+                          }}
+                        >
+                          <Edit className="w-4 h-4" />
+                        </button>
+                        <button
+                          className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                          onClick={() => {
+                            setEditingItem(request);
+                            setShowDeleteMaintenanceModal(true);
+                          }}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
@@ -2264,24 +2352,28 @@ const Rentals = () => {
                         >
                           <Eye className="w-4 h-4" />
                         </button>
-                        <button
-                          className="p-2 text-slate-600 hover:bg-slate-50 rounded-lg transition-colors"
-                          onClick={() => {
-                            setEditingItem(request);
-                            setShowEditMaintenanceModal(true);
-                          }}
-                        >
-                          <Edit className="w-4 h-4" />
-                        </button>
-                        <button
-                          className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-                          onClick={() => {
-                            setEditingItem(request);
-                            setShowDeleteMaintenanceModal(true);
-                          }}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        {user?.role?.toLowerCase() === 'admin' && (
+                          <>
+                            <button
+                              className="p-2 text-slate-600 hover:bg-slate-50 rounded-lg transition-colors"
+                              onClick={() => {
+                                setEditingItem(request);
+                                setShowEditMaintenanceModal(true);
+                              }}
+                            >
+                              <Edit className="w-4 h-4" />
+                            </button>
+                            <button
+                              className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                              onClick={() => {
+                                setEditingItem(request);
+                                setShowDeleteMaintenanceModal(true);
+                              }}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -2513,7 +2605,7 @@ const Rentals = () => {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <label className="text-sm text-slate-500 font-medium">Security Deposit Paid</label>
-                      <p className="text-2xl font-bold text-teal-600">₱{selectedItem.depositPaid.toLocaleString()}</p>
+                      <p className="text-2xl font-bold text-teal-600">₱{(selectedItem.depositPaid || 0).toLocaleString()}</p>
                     </div>
                     <div>
                       <label className="text-sm text-slate-500 font-medium">Last Payment</label>
@@ -2805,7 +2897,18 @@ const Rentals = () => {
       {showEditPropertyModal && editingItem && (
         <Modal
           isOpen={showEditPropertyModal}
-          onClose={() => setShowEditPropertyModal(false)}
+          onClose={() => {
+            setShowEditPropertyModal(false);
+            setEditPropertyData({
+              name: '',
+              stall_number: '',
+              type: '',
+              location: '',
+              size: '',
+              monthly_rate: '',
+              status: ''
+            });
+          }}
           title="Edit Property"
           subtitle="Update property information"
           icon={<Building2 className="w-6 h-6" />}
@@ -2813,15 +2916,14 @@ const Rentals = () => {
         >
           <form className="space-y-6" onSubmit={(e) => {
             e.preventDefault();
-            const formData = new FormData(e.target);
             const propertyData = {
-              name: formData.get('name'),
-              stall_number: formData.get('stall_number'),
-              type: formData.get('type'),
-              location: formData.get('location'),
-              size: formData.get('size'),
-              monthly_rate: formData.get('monthly_rate'),
-              status: formData.get('status')
+              name: editPropertyData.name,
+              stall_number: stallNumberInput,
+              type: editPropertyData.type,
+              location: editPropertyData.location,
+              size: editPropertyData.size,
+              monthly_rate: parseFloat(editPropertyData.monthly_rate) || 0,
+              status: editPropertyData.status
             };
             handleEditProperty(propertyData);
           }}>
@@ -2833,9 +2935,10 @@ const Rentals = () => {
                   type="text"
                   value={stallNumberInput}
                   onChange={(e) => setStallNumberInput(e.target.value)}
+                  disabled={user?.role?.toLowerCase() === 'staff'}
                   className={`w-full px-4 py-3 border rounded-lg focus:ring-2 transition-colors ${
                     stallNumberError ? 'border-red-500 focus:ring-red-500' : 'border-slate-300 focus:ring-cyan-500'
-                  }`}
+                  } ${user?.role?.toLowerCase() === 'staff' ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                   placeholder="e.g., Stall 1, Unit A"
                 />
                 {stallNumberError && (
@@ -2847,15 +2950,28 @@ const Rentals = () => {
                 <input
                   name="name"
                   type="text"
-                  defaultValue={editingItem.name || ''}
-                  className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-colors"
+                  value={editPropertyData.name}
+                  onChange={(e) => setEditPropertyData(prev => ({ ...prev, name: e.target.value }))}
+                  disabled={user?.role?.toLowerCase() === 'staff'}
+                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:border-cyan-500 transition-colors ${
+                    user?.role?.toLowerCase() === 'staff' ? 'bg-gray-100 cursor-not-allowed' : 'border-slate-300 focus:ring-cyan-500'
+                  }`}
                   placeholder="Enter property name"
                   required
                 />
               </div>
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-2">Property Type</label>
-                <select name="type" defaultValue={editingItem.type || ''} className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-colors" required>
+                <select 
+                  name="type" 
+                  value={editPropertyData.type}
+                  onChange={(e) => setEditPropertyData(prev => ({ ...prev, type: e.target.value }))}
+                  disabled={user?.role?.toLowerCase() === 'staff'}
+                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:border-cyan-500 transition-colors ${
+                    user?.role?.toLowerCase() === 'staff' ? 'bg-gray-100 cursor-not-allowed' : 'border-slate-300 focus:ring-cyan-500'
+                  }`} 
+                  required
+                >
                   <option value="Commercial">Commercial</option>
                   <option value="Residential">Residential</option>
                 </select>
@@ -2865,8 +2981,12 @@ const Rentals = () => {
                 <input
                   name="location"
                   type="text"
-                  defaultValue={editingItem.location || ''}
-                  className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-colors"
+                  value={editPropertyData.location}
+                  onChange={(e) => setEditPropertyData(prev => ({ ...prev, location: e.target.value }))}
+                  disabled={user?.role?.toLowerCase() === 'staff'}
+                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:border-cyan-500 transition-colors ${
+                    user?.role?.toLowerCase() === 'staff' ? 'bg-gray-100 cursor-not-allowed' : 'border-slate-300 focus:ring-cyan-500'
+                  }`}
                   placeholder="Enter location details"
                   required
                 />
@@ -2876,8 +2996,12 @@ const Rentals = () => {
                 <input
                   name="size"
                   type="text"
-                  defaultValue={editingItem.size || ''}
-                  className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-colors"
+                  value={editPropertyData.size}
+                  onChange={(e) => setEditPropertyData(prev => ({ ...prev, size: e.target.value }))}
+                  disabled={user?.role?.toLowerCase() === 'staff'}
+                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:border-cyan-500 transition-colors ${
+                    user?.role?.toLowerCase() === 'staff' ? 'bg-gray-100 cursor-not-allowed' : 'border-slate-300 focus:ring-cyan-500'
+                  }`}
                   placeholder="e.g., 100 sqm or 100"
                   required
                 />
@@ -2887,8 +3011,12 @@ const Rentals = () => {
                 <input
                   name="monthly_rate"
                   type="number"
-                  defaultValue={editingItem.monthlyRate || ''}
-                  className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-colors"
+                  value={editPropertyData.monthly_rate}
+                  onChange={(e) => setEditPropertyData(prev => ({ ...prev, monthly_rate: e.target.value }))}
+                  disabled={user?.role?.toLowerCase() === 'staff'}
+                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:border-cyan-500 transition-colors ${
+                    user?.role?.toLowerCase() === 'staff' ? 'bg-gray-100 cursor-not-allowed' : 'border-slate-300 focus:ring-cyan-500'
+                  }`}
                   placeholder="0.00"
                   min="0"
                   step="0.01"
@@ -2897,7 +3025,7 @@ const Rentals = () => {
               </div>
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-2">Status</label>
-                <select name="status" defaultValue={editingItem.status || ''} className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-colors" required>
+                <select name="status" value={editPropertyData.status} onChange={(e) => setEditPropertyData(prev => ({ ...prev, status: e.target.value }))} className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-colors" required>
                   <option value="Occupied">Occupied</option>
                   <option value="Vacant">Vacant</option>
                   <option value="Under Maintenance">Under Maintenance</option>
@@ -2907,7 +3035,18 @@ const Rentals = () => {
             <div className="flex gap-3 pt-6 border-t border-slate-200">
               <button
                 type="button"
-                onClick={() => setShowEditPropertyModal(false)}
+                onClick={() => {
+                  setShowEditPropertyModal(false);
+                  setEditPropertyData({
+                    name: '',
+                    stall_number: '',
+                    type: '',
+                    location: '',
+                    size: '',
+                    monthly_rate: '',
+                    status: ''
+                  });
+                }}
                 className="flex-1 px-4 py-3 border border-slate-300 text-slate-700 rounded-lg font-semibold hover:bg-slate-50 transition-colors"
               >
                 Cancel

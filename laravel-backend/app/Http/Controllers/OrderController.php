@@ -11,6 +11,7 @@ use Illuminate\Support\Str;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
+use App\Services\CacheService;
 
 class OrderController extends Controller
 {
@@ -129,6 +130,19 @@ class OrderController extends Controller
             // Decrease stock using atomic decrement (thread-safe)
             Inventory::where('product_id', $item['product_id'])
                 ->decrement('quantity', $item['quantity']);
+
+            // Create product transaction for OUT movement immediately
+            \App\Models\ProductTransaction::create([
+                'product_id' => $item['product_id'],
+                'type' => 'OUT',
+                'quantity' => $item['quantity'],
+                'unit_price' => $item['unit_price'],
+                'total_amount' => $item['quantity'] * $item['unit_price'],
+                'reference_type' => 'order',
+                'reference_id' => $order->order_id,
+                'user_id' => Auth::id(),
+                'notes' => 'Order ' . $orderNumber . ' - ' . ($validated['payment'] ? 'Paid' : 'Pending Payment'),
+            ]);
         }
 
         // Update order total
@@ -156,23 +170,8 @@ class OrderController extends Controller
                 'completed_date' => Carbon::now(),
             ]);
 
-            // Create product transactions for OUT movements
-            foreach ($order->orderItems as $item) {
-                \App\Models\ProductTransaction::create([
-                    'product_id' => $item->product_id,
-                    'type' => 'OUT',
-                    'quantity' => $item->quantity,
-                    'unit_price' => $item->unit_price,
-                    'total_amount' => $item->quantity * $item->unit_price,
-                    'reference_type' => 'order',
-                    'reference_id' => $order->order_id,
-                    'user_id' => Auth::id(),
-                    'notes' => 'Sale - Order ' . $order->order_number . ' (POS)',
-                ]);
-            }
-
-            // Clear dashboard cache
-            Cache::forget('dashboard_data');
+            // Clear all relevant caches
+            CacheService::clearOrderCache();
 
             // Return minimal data immediately for INSTANT receipt display (1 second)
             return response()->json([
@@ -224,6 +223,28 @@ class OrderController extends Controller
         // If status changed to Completed, set completed_date
         if (isset($validated['status']) && $validated['status'] === 'Completed' && $order->status !== 'Completed') {
             $validated['completed_date'] = Carbon::now();
+        }
+
+        // If status changed to Cancelled, return stock to inventory
+        if (isset($validated['status']) && $validated['status'] === 'Cancelled' && $order->status !== 'Cancelled') {
+            foreach ($order->orderItems as $item) {
+                // Return stock to inventory
+                Inventory::where('product_id', $item->product_id)
+                    ->increment('quantity', $item->quantity);
+
+                // Create IN transaction to record the return
+                \App\Models\ProductTransaction::create([
+                    'product_id' => $item->product_id,
+                    'type' => 'IN',
+                    'quantity' => $item->quantity,
+                    'unit_price' => $item->unit_price,
+                    'total_amount' => $item->quantity * $item->unit_price,
+                    'reference_type' => 'order_cancelled',
+                    'reference_id' => $order->order_id,
+                    'user_id' => Auth::id(),
+                    'notes' => 'Order ' . $order->order_number . ' cancelled - Stock returned',
+                ]);
+            }
         }
 
         // Handle order items if provided
@@ -322,8 +343,8 @@ class OrderController extends Controller
             ]);
         }
 
-        // Clear dashboard cache when order is completed
-        Cache::forget('dashboard_data');
+        // Clear all relevant caches when order is completed
+        CacheService::clearOrderCache();
 
         return response()->json([
             'message' => 'Order completed successfully',
@@ -479,8 +500,8 @@ class OrderController extends Controller
             'status' => 'Cancelled',
         ]);
 
-        // Clear dashboard cache when order is voided
-        Cache::forget('dashboard_data');
+        // Clear all relevant caches when order is voided
+        CacheService::clearOrderCache();
 
         return response()->json([
             'message' => 'Order voided successfully',

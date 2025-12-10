@@ -42,7 +42,28 @@ function App() {
             } 
           />
         
-          {/* Protected Admin Routes (With Sidebar) */}
+          {/* Protected Routes (Conditional Sidebar based on role) */}
+          <Route 
+            path="/" 
+            element={
+              <ProtectedRoute>
+                <MainLayout />
+              </ProtectedRoute>
+            }
+          >
+            <Route path="dashboard" element={<Dashboard />} />
+            <Route path="products" element={<Products />} />
+            <Route path="categories" element={<Categories />} />
+            <Route path="inventory" element={<Inventory />} />
+            <Route path="orders" element={<Orders />} />
+            <Route path="staff" element={<Staff />} />
+            <Route path="customers" element={<Customers />} />
+            <Route path="rentals" element={<Rentals />} />
+            <Route path="toga-rentals" element={<TogaRentals />} />
+            <Route path="reports" element={<Reports />} />
+            {/* <Route path="invoices" element={<Invoices />} /> */}
+            <Route path="settings" element={<Settings />} />
+          </Route>
           <Route 
             path="/" 
             element={
@@ -59,7 +80,6 @@ function App() {
             <Route path="staff" element={<Staff />} />
             <Route path="customers" element={<Customers />} />
             <Route path="rentals" element={<Rentals />} />
-            <Route path="toga-rentals" element={<TogaRentals />} />
             <Route path="reports" element={<Reports />} />
             {/* <Route path="invoices" element={<Invoices />} /> */}
             <Route path="settings" element={<Settings />} />

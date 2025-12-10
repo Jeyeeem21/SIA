@@ -82,7 +82,7 @@ const ConfirmModal = ({
         <div className="p-6">
           {/* Icon */}
           <div className={`flex items-center justify-center w-16 h-16 ${styles.iconBg} rounded-full mx-auto mb-4`}>
-            {typeof Icon === 'function' ? <Icon className={`w-8 h-8 ${styles.iconColor}`} /> : Icon}
+            <Icon className={`w-8 h-8 ${styles.iconColor}`} />
           </div>
 
           {/* Title */}

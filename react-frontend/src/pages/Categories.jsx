@@ -55,10 +55,15 @@ const Categories = () => {
   ];
 
   // Modal field configurations
-  const categoryFields = [
+  const addCategoryFields = [
     { key: 'category_name', label: 'Category Name', type: 'text', required: true, placeholder: 'Enter category name' },
     { key: 'description', label: 'Description', type: 'textarea', required: false, fullWidth: true, rows: 3, placeholder: 'Category description (optional)' },
-    { key: 'icon', label: 'Icon Name', type: 'text', required: false, placeholder: 'e.g., Printer, Package (optional)' },
+    { key: 'status', label: 'Status', type: 'hidden', required: false, defaultValue: 'active' }
+  ];
+
+  const editCategoryFields = [
+    { key: 'category_name', label: 'Category Name', type: 'text', required: true, placeholder: 'Enter category name' },
+    { key: 'description', label: 'Description', type: 'textarea', required: false, fullWidth: true, rows: 3, placeholder: 'Category description (optional)' },
     { key: 'status', label: 'Status', type: 'select', required: true,
       options: [
         { value: 'active', label: 'Active' },
@@ -70,7 +75,6 @@ const Categories = () => {
   const viewFields = [
     { key: 'category_name', label: 'Category Name' },
     { key: 'description', label: 'Description' },
-    { key: 'icon', label: 'Icon Name' },
     { key: 'products_count', label: 'Number of Products' },
     { key: 'status', label: 'Status', render: (v) => v.toUpperCase() }
   ];
@@ -83,7 +87,13 @@ const Categories = () => {
   const handleAdd = async (formData) => {
     try {
       const response = await categoriesAPI.create(formData);
-      await fetchCategories();
+      
+      // Add new category to local state immediately
+      setCategories(prevCategories => [response.data, ...prevCategories]);
+      
+      // Also fetch from server to ensure consistency
+      fetchCategories(false);
+      
       toast.success('Category added successfully!');
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to add category');
@@ -93,8 +103,18 @@ const Categories = () => {
 
   const handleEdit = async (formData) => {
     try {
-      await categoriesAPI.update(formData.category_id, formData);
-      await fetchCategories();
+      const response = await categoriesAPI.update(formData.category_id, formData);
+      
+      // Update local state immediately for instant UI feedback
+      setCategories(prevCategories => 
+        prevCategories.map(cat => 
+          cat.category_id === formData.category_id ? response.data : cat
+        )
+      );
+      
+      // Also fetch from server to ensure consistency
+      fetchCategories(false);
+      
       toast.success('Category updated successfully!');
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to update category');
@@ -105,13 +125,24 @@ const Categories = () => {
   const handleDelete = async () => {
     try {
       await categoriesAPI.delete(deleteModal.id);
-      await fetchCategories();
+      
+      // Remove from local state immediately
+      setCategories(prevCategories => 
+        prevCategories.filter(cat => cat.category_id !== deleteModal.id)
+      );
+      
+      // Also fetch from server to ensure consistency
+      fetchCategories(false);
+      
       toast.success('Category deleted successfully!');
     } catch (error) {
       // Better error messages
       if (error.response?.status === 404) {
         toast.error('Category already deleted or not found');
-        await fetchCategories(); // Refresh to remove from UI
+        // Remove from local state anyway
+        setCategories(prevCategories => 
+          prevCategories.filter(cat => cat.category_id !== deleteModal.id)
+        );
       } else if (error.response?.status === 422) {
         toast.error(error.response?.data?.message || 'Cannot delete category');
       } else {
@@ -281,9 +312,6 @@ const Categories = () => {
                   Description
                 </th>
                 <th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">
-                  Icon
-                </th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">
                   Products
                 </th>
                 <th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">
@@ -296,10 +324,10 @@ const Categories = () => {
             </thead>
             <tbody className="divide-y divide-slate-200">
               {loading ? (
-                <PageLoadingSpinner variant="table" colSpan={6} message="Loading categories..." />
+                <PageLoadingSpinner variant="table" colSpan={5} message="Loading categories..." />
               ) : paginatedCategories.length === 0 ? (
                 <tr>
-                  <td colSpan="6" className="px-6 py-12 text-center text-slate-500">
+                  <td colSpan="5" className="px-6 py-12 text-center text-slate-500">
                     No categories found
                   </td>
                 </tr>
@@ -316,11 +344,6 @@ const Categories = () => {
                   </td>
                   <td className="px-6 py-4 text-slate-600 max-w-xs truncate">
                     {category.description}
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className="px-3 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-700 border border-slate-200">
-                      {category.icon}
-                    </span>
                   </td>
                   <td className="px-6 py-4 font-semibold text-slate-900">
                     {category.products_count || 0} items
@@ -389,7 +412,7 @@ const Categories = () => {
         isOpen={addModal}
         onClose={() => setAddModal(false)}
         title="Add New Category"
-        fields={categoryFields}
+        fields={addCategoryFields}
         onSubmit={handleAdd}
       />
 
@@ -397,7 +420,7 @@ const Categories = () => {
         isOpen={editModal.isOpen}
         onClose={() => setEditModal({ isOpen: false, data: null })}
         title="Edit Category"
-        fields={categoryFields}
+        fields={editCategoryFields}
         data={editModal.data}
         onSubmit={handleEdit}
       />

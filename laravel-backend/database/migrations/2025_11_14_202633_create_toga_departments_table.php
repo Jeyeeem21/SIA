@@ -11,14 +11,16 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('toga_departments', function (Blueprint $table) {
-            $table->id();
-            $table->string('name');
-            $table->string('code', 20)->unique();
-            $table->string('color', 20)->default('blue');
-            $table->string('icon', 50)->default('Building2');
-            $table->timestamps();
-        });
+        if (!Schema::hasTable('toga_departments')) {
+            Schema::create('toga_departments', function (Blueprint $table) {
+                $table->id();
+                $table->string('name');
+                $table->string('code', 20)->unique();
+                $table->string('color', 20)->default('blue');
+                $table->string('icon', 50)->default('Building2');
+                $table->timestamps();
+            });
+        }
     }
 
     /**

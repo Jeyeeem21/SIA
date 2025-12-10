@@ -5,18 +5,18 @@ namespace App\Http\Controllers;
 use App\Models\Category;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use App\Services\CacheService;
 
 class CategoryController extends Controller
 {
     /**
-     * Display a listing of the resource - OPTIMIZED with 1-second cache
+     * Display a listing of the resource - NO CACHE for real-time updates
      */
     public function index()
     {
-        return Cache::remember('categories_all', 1, function () {
-            $categories = Category::withCount('products')->orderBy('created_at', 'desc')->get();
-            return response()->json($categories);
-        });
+        // Direct query for real-time updates (Redis handles query optimization)
+        $categories = Category::withCount('products')->orderBy('created_at', 'desc')->get();
+        return response()->json($categories);
     }
 
     /**
@@ -32,6 +32,9 @@ class CategoryController extends Controller
         ]);
 
         $category = Category::create($validated);
+        
+        CacheService::clearCategoryCache();
+        
         return response()->json($category, 201);
     }
 
@@ -56,7 +59,12 @@ class CategoryController extends Controller
         ]);
 
         $category->update($validated);
-        return response()->json($category);
+        
+        // Aggressively clear cache for immediate updates
+        Cache::forget('categories_all');
+        CacheService::clearCategoryCache();
+        
+        return response()->json($category->loadCount('products'));
     }
 
     /**
@@ -72,6 +80,9 @@ class CategoryController extends Controller
         }
 
         $category->delete();
+        
+        CacheService::clearCategoryCache();
+        
         return response()->json(['message' => 'Category deleted successfully']);
     }
 }

@@ -11,39 +11,8 @@ return new class extends Migration
      */
     public function up(): void
     {
-        // Orders table indexes
-        Schema::table('orders', function (Blueprint $table) {
-            $table->index('order_number', 'idx_orders_order_number');
-            $table->index('status', 'idx_orders_status');
-            $table->index('is_voided', 'idx_orders_is_voided');
-            $table->index('created_at', 'idx_orders_created_at');
-            $table->index(['status', 'is_voided'], 'idx_orders_status_voided');
-        });
-
-        // Order Items table indexes
-        Schema::table('order_items', function (Blueprint $table) {
-            $table->index('order_id', 'idx_order_items_order_id');
-            $table->index('product_id', 'idx_order_items_product_id');
-        });
-
-        // Product Transactions table indexes
-        Schema::table('product_transactions', function (Blueprint $table) {
-            $table->index('type', 'idx_product_transactions_type');
-            $table->index('created_at', 'idx_product_transactions_created_at');
-            $table->index(['product_id', 'type', 'created_at'], 'idx_product_transactions_lookup');
-        });
-
-        // Inventories table indexes
-        Schema::table('inventories', function (Blueprint $table) {
-            $table->index('product_id', 'idx_inventories_product_id');
-            $table->index('updated_at', 'idx_inventories_updated_at');
-        });
-
-        // Products table indexes
-        Schema::table('products', function (Blueprint $table) {
-            $table->index('category_id', 'idx_products_category_id');
-            $table->index('product_name', 'idx_products_product_name');
-        });
+        // Skip - indexes already added by other migrations
+        // This migration is superseded by 2025_12_10_070000_add_redis_optimized_indexes
     }
 
     /**

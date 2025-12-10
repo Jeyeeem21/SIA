@@ -76,36 +76,39 @@ class ReportsController extends Controller
             ];
         }
 
-        // Top Products Bar Chart (by revenue from completed orders)
+        // Top Products Bar Chart (by quantity sold from completed orders)
         $topProducts = OrderItem::join('orders', 'order_items.order_id', '=', 'orders.order_id')
-            ->join('products', 'order_items.product_id', '=', 'products.product_id')
-            ->whereBetween('orders.completed_date', [
-                Carbon::parse($startDate),
-                Carbon::parse($endDate)
-            ])
+            ->leftJoin('products', 'order_items.product_id', '=', 'products.product_id')
             ->where('orders.status', 'Completed')
+            ->whereBetween('orders.completed_date', [
+                Carbon::parse($startDate)->startOfDay(),
+                Carbon::parse($endDate)->endOfDay()
+            ])
             ->select(
-                'products.product_name',
+                DB::raw('COALESCE(products.product_name, order_items.product_name, "Unknown Product") as product_name'),
                 DB::raw('SUM(order_items.quantity * order_items.unit_price) as revenue'),
                 DB::raw('SUM(order_items.quantity) as total_sold')
             )
-            ->groupBy('products.product_id', 'products.product_name')
-            ->orderByDesc('revenue')
+            ->groupBy('order_items.product_id', 'products.product_name', 'order_items.product_name')
+            ->orderByDesc('total_sold')
             ->limit(10)
             ->get()
             ->map(function ($item) {
                 return [
-                    'name' => $item->product_name,
+                    'name' => $item->product_name ?: 'Unknown Product',
                     'revenue' => (float) $item->revenue,
                     'sold' => (int) $item->total_sold,
                 ];
             });
 
         // Service Distribution Pie Chart (top 5 services only)
-        $serviceDistribution = Order::whereBetween('created_at', [
-            Carbon::parse($startDate),
-            Carbon::parse($endDate)
-        ])
+        $serviceDistribution = Order::where('status', 'Completed')
+            ->whereBetween('completed_date', [
+                Carbon::parse($startDate)->startOfDay(),
+                Carbon::parse($endDate)->endOfDay()
+            ])
+            ->whereNotNull('service_type')
+            ->where('service_type', '!=', '')
             ->select(
                 'service_type',
                 DB::raw('COUNT(*) as count'),
@@ -117,7 +120,7 @@ class ReportsController extends Controller
             ->get()
             ->map(function ($item) {
                 return [
-                    'name' => $item->service_type,
+                    'name' => $item->service_type ?: 'Other',
                     'value' => (int) $item->count,
                     'revenue' => (float) $item->revenue,
                 ];
@@ -156,7 +159,7 @@ class ReportsController extends Controller
                         ];
                     }),
                     'total_amount' => (float) $order->total_amount,
-                    'status' => $order->status,
+                    'status' => $order->is_voided ? 'Cancelled' : $order->status,
                     'payment_status' => $order->payment->payment_status ?? 'unpaid',
                     'payment_method' => $order->payment->payment_method ?? 'N/A',
                     'date' => $order->completed_date ? Carbon::parse($order->completed_date)->format('Y-m-d') : $order->created_at->format('Y-m-d'),

@@ -11,9 +11,9 @@ return new class extends Migration
      */
     public function up(): void
     {
-        if (!Schema::hasColumn('products', 'product_image')) {
-            Schema::table('products', function (Blueprint $table) {
-                $table->longText('product_image')->nullable()->after('barcode');
+        if (!Schema::hasColumn('users', 'last_login')) {
+            Schema::table('users', function (Blueprint $table) {
+                $table->timestamp('last_login')->nullable()->after('remember_token');
             });
         }
     }
@@ -23,8 +23,8 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('products', function (Blueprint $table) {
-            $table->dropColumn('product_image');
+        Schema::table('users', function (Blueprint $table) {
+            $table->dropColumn('last_login');
         });
     }
 };

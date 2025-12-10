@@ -11,6 +11,8 @@ return new class extends Migration
      */
     public function up(): void
     {
+        // Skip - toga_rentals table already exists with same structure
+        return;
         Schema::create('toga_students', function (Blueprint $table) {
             $table->id();
             $table->foreignId('toga_department_id')->constrained('toga_departments')->onDelete('cascade');

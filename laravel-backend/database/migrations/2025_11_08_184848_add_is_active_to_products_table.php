@@ -12,9 +12,11 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('products', function (Blueprint $table) {
-            $table->boolean('is_active')->default(true)->after('status');
-        });
+        if (!Schema::hasColumn('products', 'is_active')) {
+            Schema::table('products', function (Blueprint $table) {
+                $table->boolean('is_active')->default(true)->after('status');
+            });
+        }
         
         // Update is_active based on stock and expiration
         DB::statement('UPDATE products p 

@@ -11,9 +11,11 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('rental_properties', function (Blueprint $table) {
-            $table->string('stall_number', 50)->after('name')->nullable();
-        });
+        if (!Schema::hasColumn('rental_properties', 'stall_number')) {
+            Schema::table('rental_properties', function (Blueprint $table) {
+                $table->string('stall_number', 50)->after('name')->nullable();
+            });
+        }
     }
 
     /**

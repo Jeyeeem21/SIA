@@ -7,7 +7,7 @@ const AddModal = ({ isOpen, onClose, title, fields, onSubmit }) => {
 
   useEffect(() => {
     if (isOpen) {
-      // Initialize form with default values
+      // Initialize form with default values only when modal opens
       const initialData = {};
       fields.forEach(field => {
         initialData[field.key] = field.defaultValue || '';
@@ -15,7 +15,7 @@ const AddModal = ({ isOpen, onClose, title, fields, onSubmit }) => {
       setFormData(initialData);
       setErrors({});
     }
-  }, [isOpen, fields]);
+  }, [isOpen]); // Remove 'fields' from dependencies to prevent re-initialization
 
   const handleChange = (key, value) => {
     setFormData(prev => ({ ...prev, [key]: value }));
@@ -60,14 +60,26 @@ const AddModal = ({ isOpen, onClose, title, fields, onSubmit }) => {
     <Modal isOpen={isOpen} onClose={onClose} title={title} size="lg">
       <form onSubmit={handleSubmit}>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {fields.map((field, index) => (
-            <div key={index} className={field.fullWidth ? 'md:col-span-2' : ''}>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                {field.label}
-                {field.required && <span className="text-red-500 ml-1">*</span>}
-              </label>
-              
-              {field.type === 'select' ? (
+          {fields.map((field, index) => {
+            // Handle hidden fields
+            if (field.type === 'hidden') {
+              return (
+                <input
+                  key={index}
+                  type="hidden"
+                  value={formData[field.key] || field.defaultValue || ''}
+                />
+              );
+            }
+
+            return (
+              <div key={index} className={field.fullWidth ? 'md:col-span-2' : ''}>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  {field.label}
+                  {field.required && <span className="text-red-500 ml-1">*</span>}
+                </label>
+                
+                {field.type === 'select' ? (
                 <select
                   value={formData[field.key] || ''}
                   onChange={(e) => handleChange(field.key, e.target.value)}
@@ -127,7 +139,8 @@ const AddModal = ({ isOpen, onClose, title, fields, onSubmit }) => {
                 <p className="text-red-500 text-sm mt-1">{errors[field.key]}</p>
               )}
             </div>
-          ))}
+          );
+          })}
         </div>
 
         <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-200">

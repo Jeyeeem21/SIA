@@ -27,7 +27,7 @@ import {
   useVoidOrder 
 } from '../hooks/useOrders';
 import { useProducts } from '../hooks/useProducts';
-import { LoadingBar, TableSkeleton } from '../components/LoadingStates';
+import { useAuth } from '../contexts/AuthContext';
 
 const Orders = () => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -46,6 +46,9 @@ const Orders = () => {
   const updateOrderMutation = useUpdateOrder();
   const completeOrderMutation = useCompleteOrder();
   const voidOrderMutation = useVoidOrder();
+  
+  // Auth hook for role checking
+  const { user } = useAuth();
   
   // Modal states
   const [viewModal, setViewModal] = useState({ isOpen: false, data: null });
@@ -1008,22 +1011,26 @@ const Orders = () => {
                                 >
                                   <CheckCircle className="w-4 h-4" />
                                 </button>
-                                <button 
-                                  onClick={() => setVoidModal({ isOpen: true, order: order, reason: '' })}
-                                  className="p-2 bg-orange-100 text-orange-700 rounded-lg hover:bg-orange-200 transition-colors"
-                                  title="Void Order"
-                                >
-                                  <XCircle className="w-4 h-4" />
-                                </button>
+                                {(user?.role?.toLowerCase() === 'admin' || user?.role?.toLowerCase() === 'staff') && (
+                                  <button 
+                                    onClick={() => setVoidModal({ isOpen: true, order: order, reason: '' })}
+                                    className="p-2 bg-orange-100 text-orange-700 rounded-lg hover:bg-orange-200 transition-colors"
+                                    title="Void Order"
+                                  >
+                                    <XCircle className="w-4 h-4" />
+                                  </button>
+                                )}
                               </>
                             )}
-                            <button 
-                              onClick={() => setDeleteModal({ isOpen: true, id: order.order_id, name: order.order_number })}
-                              className="p-2 bg-rose-100 text-rose-700 rounded-lg hover:bg-rose-200 transition-colors"
-                              title="Delete Order"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
+                            {(user?.role?.toLowerCase() === 'admin' || user?.role?.toLowerCase() === 'staff') && (
+                              <button 
+                                onClick={() => setDeleteModal({ isOpen: true, id: order.order_id, name: order.order_number })}
+                                className="p-2 bg-rose-100 text-rose-700 rounded-lg hover:bg-rose-200 transition-colors"
+                                title="Delete Order"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )}
                           </>
                         )}
                         </div>

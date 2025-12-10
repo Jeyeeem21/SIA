@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   ShoppingCart,
   Plus,
@@ -30,6 +31,7 @@ import { LoadingBar, CardGridSkeleton } from '../../components/LoadingStates';
 const Pos = () => {
   const { user, logout } = useAuth();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   
   // React Query hooks
   const { data: products = [], isLoading } = useProducts();
@@ -47,6 +49,7 @@ const Pos = () => {
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [searchTerm, setSearchTerm] = useState('');
   const [showUserMenuPos, setShowUserMenuPos] = useState(false);
+  const [selectedSystem, setSelectedSystem] = useState('POS');
   const userMenuRefPos = useRef(null);
   
   // Payment modal state (like Orders.jsx)
@@ -134,13 +137,18 @@ const Pos = () => {
       if (userMenuRefPos.current && !userMenuRefPos.current.contains(e.target)) {
         setShowUserMenuPos(false);
       }
-      
-      // Refocus scanner when clicking outside cart items (but not on buttons/inputs)
+
+      // Refocus scanner when clicking outside cart items (but not on buttons/inputs/selects/modals)
       const clickedElement = e.target;
       const isButton = clickedElement.tagName === 'BUTTON' || clickedElement.closest('button');
-      const isInput = clickedElement.tagName === 'INPUT' || clickedElement.closest('input');
+      // Treat SELECT and TEXTAREA as input elements so clicking them doesn't steal focus
+      const isInput = clickedElement.tagName === 'INPUT' || clickedElement.closest('input') ||
+                      clickedElement.tagName === 'SELECT' || clickedElement.closest('select') ||
+                      clickedElement.tagName === 'TEXTAREA' || clickedElement.closest('textarea') ||
+                      (clickedElement instanceof HTMLElement && clickedElement.isContentEditable);
       const isModal = clickedElement.closest('[role="dialog"]') || clickedElement.closest('.fixed.inset-0');
-      
+
+      // Only refocus the scanner when the user clicked on a non-interactive area
       if (!isButton && !isInput && !isModal && barcodeInputRef.current && !paymentModal) {
         setTimeout(() => {
           if (barcodeInputRef.current) {
@@ -504,7 +512,7 @@ const Pos = () => {
           );
           
           if (product) {
-            if (product.status !== 'active') {
+            if (!product.is_active) {
               toast.error(`Product not available - "${product.product_name}" is inactive`);
             } else {
               const inventoryQty = getInventoryQuantity(product.product_id);
@@ -678,7 +686,7 @@ const Pos = () => {
       
       if (product) {
         // Check if product is active
-        if (product.status !== 'active') {
+        if (!product.is_active) {
           toast.error(`Product not available - "${product.product_name}" is inactive`);
           e.target.value = '';
           return;
@@ -924,28 +932,54 @@ const Pos = () => {
       </div>
 
       {/* Header */}
-      <div className="mb-8 flex items-center justify-between">
+      <div className="mb-8">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-4">
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-1">System</label>
+              <select
+                value={selectedSystem}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setSelectedSystem(value);
+                  if (value === 'Rental') {
+                    navigate('/rentals');
+                  } else if (value === 'Toga Rental') {
+                    navigate('/toga-rentals');
+                  }
+                  // POS stays on current page
+                }}
+                // Ensure the dropdown is clickable above any nearby overlays
+                className="relative z-50 pointer-events-auto px-4 py-2 border-2 border-slate-200 rounded-xl focus:border-cyan-500 focus:outline-none text-slate-900 bg-white font-medium appearance-auto"
+              >
+                <option value="POS">POS (Products)</option>
+                <option value="Rental">Rental</option>
+                <option value="Toga Rental">Toga Rental</option>
+              </select>
+            </div>
+          </div>
+          <div className="flex gap-3">
+            <button
+              onClick={() => setSearchModal({ isOpen: true, order: null })}
+              className="px-6 py-3 bg-gradient-to-r from-red-600 to-rose-600 text-white rounded-xl font-semibold shadow-lg shadow-red-500/30 hover:shadow-xl hover:shadow-red-500/40 transition-all hover:scale-105 active:scale-95 flex items-center gap-2"
+            >
+              <X className="w-5 h-5" />
+              Void Order
+            </button>
+            <button
+              onClick={() => setAddModal(true)}
+              className="px-6 py-3 bg-gradient-to-r from-amber-600 to-orange-600 text-white rounded-xl font-semibold shadow-lg shadow-amber-500/30 hover:shadow-xl hover:shadow-amber-500/40 transition-all hover:scale-105 active:scale-95 flex items-center gap-2"
+            >
+              <PlusCircle className="w-5 h-5" />
+              Add Custom Order
+            </button>
+          </div>
+        </div>
         <div>
           <h1 className="text-4xl font-bold bg-gradient-to-r from-slate-900 via-cyan-800 to-teal-900 bg-clip-text text-transparent mb-2">
             Point of Sale
           </h1>
           <p className="text-slate-600">Process customer transactions efficiently.</p>
-        </div>
-        <div className="flex gap-3">
-          <button
-            onClick={() => setSearchModal({ isOpen: true, order: null })}
-            className="px-6 py-3 bg-gradient-to-r from-red-600 to-rose-600 text-white rounded-xl font-semibold shadow-lg shadow-red-500/30 hover:shadow-xl hover:shadow-red-500/40 transition-all hover:scale-105 active:scale-95 flex items-center gap-2"
-          >
-            <X className="w-5 h-5" />
-            Void Order
-          </button>
-          <button
-            onClick={() => setAddModal(true)}
-            className="px-6 py-3 bg-gradient-to-r from-amber-600 to-orange-600 text-white rounded-xl font-semibold shadow-lg shadow-amber-500/30 hover:shadow-xl hover:shadow-amber-500/40 transition-all hover:scale-105 active:scale-95 flex items-center gap-2"
-          >
-            <PlusCircle className="w-5 h-5" />
-            Add Custom Order
-          </button>
         </div>
       </div>
 
@@ -1042,6 +1076,9 @@ const Pos = () => {
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
               {products
                   .filter(product => {
+                    // Filter by active status
+                    const isActive = product.is_active;
+
                     // Filter by category
                     const categoryMatch = selectedCategory === 'All' ||
                       (product.category && product.category.category_name === selectedCategory);
@@ -1051,7 +1088,7 @@ const Pos = () => {
                       product.product_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                       (product.category && product.category.category_name.toLowerCase().includes(searchTerm.toLowerCase()));
 
-                    return categoryMatch && searchMatch;
+                    return isActive && categoryMatch && searchMatch;
                   })
                   .map(product => (
                   <div key={product.product_id} className="bg-gradient-to-br from-white to-slate-50 rounded-xl p-4 border border-slate-200 hover:shadow-lg hover:border-cyan-300 transition-all duration-300 group">

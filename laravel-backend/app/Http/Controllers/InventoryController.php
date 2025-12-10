@@ -8,6 +8,7 @@ use App\Models\ProductTransaction;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
+use App\Services\CacheService;
 use Carbon\Carbon;
 
 class InventoryController extends Controller
@@ -45,6 +46,9 @@ class InventoryController extends Controller
         ]);
 
         $inventory = Inventory::create($validated);
+        
+        CacheService::clearInventoryCache();
+        
         return response()->json($inventory->load('product.category'), 201);
     }
 
@@ -70,6 +74,12 @@ class InventoryController extends Controller
         ]);
 
         $inventory->update($validated);
+        
+        // Update product is_active status based on new inventory
+        $this->updateProductActiveStatus($inventory->product);
+        
+        CacheService::clearInventoryCache();
+        
         return response()->json($inventory->load('product.category'));
     }
 
@@ -91,6 +101,9 @@ class InventoryController extends Controller
         $inventory->last_restock_quantity = $validated['quantity'];
         $inventory->save();
 
+        // Update product is_active status based on new inventory
+        $this->updateProductActiveStatus($product);
+
         // Create product transaction for IN movement
         ProductTransaction::create([
             'product_id' => $inventory->product_id,
@@ -104,8 +117,8 @@ class InventoryController extends Controller
             'notes' => 'Restock - Added ' . $validated['quantity'] . ' units',
         ]);
 
-        // Clear dashboard cache when inventory is restocked
-        Cache::forget('dashboard_data');
+        // Clear all relevant caches when inventory is restocked
+        CacheService::clearInventoryCache();
 
         return response()->json([
             'message' => 'Inventory restocked successfully',
@@ -119,6 +132,27 @@ class InventoryController extends Controller
     public function destroy(Inventory $inventory)
     {
         $inventory->delete();
+        
+        CacheService::clearInventoryCache();
+        
         return response()->json(['message' => 'Inventory deleted successfully']);
+    }
+
+    /**
+     * Update product's is_active status based on inventory and expiration
+     */
+    private function updateProductActiveStatus(Product $product)
+    {
+        // Auto-set is_active: true if (not expired OR no expiry) AND has stock, else false
+        $isNotExpired = true;
+        if ($product->expiration_date) {
+            $isNotExpired = \Carbon\Carbon::parse($product->expiration_date)->isFuture();
+        }
+        $hasStock = $product->inventory->quantity > 0;
+        $product->is_active = $isNotExpired && $hasStock;
+        $product->save();
+
+        // Clear product cache since status changed
+        CacheService::clearProductCache();
     }
 }
