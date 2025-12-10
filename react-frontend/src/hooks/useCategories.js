@@ -40,6 +40,16 @@ export const useUpdateCategory = () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.categories });
       queryClient.invalidateQueries({ queryKey: queryKeys.products });
     },
+    onError: (err) => {
+      // Better error messages
+      if (err.response?.status === 404) {
+        toast.error('Category not found - it may have been deleted');
+      } else if (err.response?.status === 422) {
+        toast.error(err.response?.data?.message || 'Validation error');
+      } else {
+        toast.error('Update failed');
+      }
+    },
   });
 };
 
@@ -53,6 +63,16 @@ export const useDeleteCategory = () => {
       toast.success('Category deleted successfully!');
       queryClient.invalidateQueries({ queryKey: queryKeys.categories });
       queryClient.invalidateQueries({ queryKey: queryKeys.products });
+    },
+    onError: (err) => {
+      // Better error messages
+      if (err.response?.status === 404) {
+        toast.error('Category already deleted or not found');
+      } else if (err.response?.status === 422) {
+        toast.error(err.response?.data?.message || 'Cannot delete category');
+      } else {
+        toast.error('Delete failed');
+      }
     },
   });
 };

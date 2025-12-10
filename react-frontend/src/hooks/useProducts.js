@@ -97,7 +97,15 @@ export const useUpdateProduct = () => {
     onError: (err, variables, context) => {
       // Rollback on error
       queryClient.setQueryData(queryKeys.products, context.previousProducts);
-      toast.error('Update failed - rolled back');
+      
+      // Better error messages
+      if (err.response?.status === 404) {
+        toast.error('Product not found - it may have been deleted');
+      } else if (err.response?.status === 422) {
+        toast.error(err.response?.data?.message || 'Validation error');
+      } else {
+        toast.error('Update failed - rolled back');
+      }
     },
   });
 };
@@ -126,7 +134,15 @@ export const useDeleteProduct = () => {
     onError: (err, id, context) => {
       // Rollback on error
       queryClient.setQueryData(queryKeys.products, context.previousProducts);
-      toast.error('Delete failed - rolled back');
+      
+      // Better error messages
+      if (err.response?.status === 404) {
+        toast.error('Product already deleted or not found');
+      } else if (err.response?.status === 422) {
+        toast.error(err.response?.data?.message || 'Cannot delete product');
+      } else {
+        toast.error('Delete failed - rolled back');
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.products });

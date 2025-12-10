@@ -98,12 +98,7 @@ const Products = () => {
     { key: 'price', label: 'Selling Price (₱)', type: 'number', required: true, placeholder: '0.00', step: '0.01' },
     { key: 'cost', label: 'Cost Price (₱)', type: 'number', required: false, placeholder: '0.00', step: '0.01' },
     { key: 'expiration_date', label: 'Expiration Date', type: 'date', required: false, placeholder: 'Select expiration date' },
-    { key: 'status', label: 'Status', type: 'select', required: true,
-      options: [
-        { value: 'active', label: 'Active' },
-        { value: 'inactive', label: 'Inactive' }
-      ]
-    },
+    { key: 'status', label: 'Status', type: 'text', required: true, defaultValue: 'active', readOnly: true },
     { key: 'product_image', label: 'Product Image', type: 'file', required: false, accept: 'image/*', placeholder: 'Upload product image', fullWidth: true },
     { key: 'description', label: 'Description', type: 'textarea', fullWidth: true, rows: 3, placeholder: 'Product description...' }
   ];

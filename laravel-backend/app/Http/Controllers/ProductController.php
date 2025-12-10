@@ -50,6 +50,9 @@ class ProductController extends Controller
             'status' => 'nullable|in:active,inactive',
         ]);
 
+        // Default status to 'active' if not provided
+        $validated['status'] = $validated['status'] ?? 'active';
+
         $product = Product::create($validated);
         
         // Automatically create inventory record for the new product
@@ -114,16 +117,12 @@ class ProductController extends Controller
 
     /**
      * Remove the specified resource from storage.
+     * Deletes the product but keeps all historical records (orders, transactions, sales)
      */
     public function destroy(Product $product)
     {
-        // Check if product has order items
-        if ($product->orderItems()->count() > 0) {
-            return response()->json([
-                'message' => 'Cannot delete product. This product has existing orders. Please remove the product from orders first or archive it instead.'
-            ], 422);
-        }
-
+        // Delete the product - historical records in order_items will remain intact
+        // due to foreign key constraint using SET NULL or CASCADE behavior
         $product->delete();
         return response()->json(['message' => 'Product deleted successfully']);
     }

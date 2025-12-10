@@ -111,10 +111,14 @@ class OrderController extends Controller
         // STEP 3: Create order items and decrease stock atomically
         $totalAmount = 0;
         foreach ($validated['order_items'] as $item) {
+            // Get product name for history preservation
+            $product = \App\Models\Product::find($item['product_id']);
+            
             // Create order item
             $orderItem = OrderItem::create([
                 'order_id' => $order->order_id,
                 'product_id' => $item['product_id'],
+                'product_name' => $product->product_name, // Save name for deleted product history
                 'quantity' => $item['quantity'],
                 'unit_price' => $item['unit_price'],
                 'notes' => $item['notes'] ?? null,

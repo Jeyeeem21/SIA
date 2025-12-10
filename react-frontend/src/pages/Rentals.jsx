@@ -490,33 +490,64 @@ const Rentals = () => {
 
   const handleDeleteProperty = async () => {
     const propertyId = editingItem.id;
+    
+    // INSTANT: Close modal and clear state immediately
     setShowDeletePropertyModal(false);
     setEditingItem(null);
     
+    // INSTANT: Remove from UI immediately
+    const previousProperties = queryClient.getQueryData(['rental-properties']);
+    queryClient.setQueryData(['rental-properties'], (old) => 
+      old?.filter(item => item.id !== propertyId)
+    );
+    
+    // INSTANT: Show success immediately
+    toast.success('Property deleted!');
+    
     try {
       await rentalsAPI.deleteProperty(propertyId);
-      toast.success('Property deleted successfully!');
       queryClient.invalidateQueries(['rental-properties']);
     } catch (error) {
+      // Rollback on error
+      queryClient.setQueryData(['rental-properties'], previousProperties);
       console.error('Error deleting property:', error);
-      const errorMessage = error.response?.data?.message || 'Failed to delete property';
-      toast.error(errorMessage);
+      
+      // Better error messages
+      if (error.response?.status === 404) {
+        toast.error('Property already deleted or not found');
+        queryClient.invalidateQueries(['rental-properties']); // Refresh to sync
+      } else if (error.response?.status === 400) {
+        toast.error(error.response?.data?.error || 'Cannot delete property');
+      } else {
+        const errorMessage = error.response?.data?.message || 'Failed to delete property - rolled back';
+        toast.error(errorMessage);
+      }
     }
   };
 
   // Tenant CRUD Handlers
   const handleCreateTenant = async (formData) => {
+    // INSTANT: Close modal immediately
     setShowTenantModal(false);
+    
+    // INSTANT: Add to UI immediately
+    const previousTenants = queryClient.getQueryData(['rental-tenants']);
+    const tempTenant = { ...formData, id: 'temp-' + Date.now() };
+    queryClient.setQueryData(['rental-tenants'], (old) => [tempTenant, ...(old || [])]);
+    
+    // INSTANT: Show success immediately
+    toast.success('Tenant created!');
     
     try {
       console.log('Creating tenant with data:', formData);
       await rentalsAPI.createTenant(formData);
-      toast.success('Tenant created successfully!');
       queryClient.invalidateQueries(['rental-tenants']);
     } catch (error) {
+      // Rollback on error
+      queryClient.setQueryData(['rental-tenants'], previousTenants);
       console.error('Error creating tenant:', error);
       console.error('Error response:', error.response?.data);
-      const errorMessage = error.response?.data?.message || 'Failed to create tenant';
+      const errorMessage = error.response?.data?.message || 'Failed to create tenant - rolled back';
       const errors = error.response?.data?.errors;
       if (errors) {
         Object.values(errors).forEach(err => toast.error(err[0]));
@@ -528,33 +559,64 @@ const Rentals = () => {
 
   const handleEditTenant = async (formData) => {
     const tenantId = editingItem.id;
+    
+    // INSTANT: Close modal and clear state immediately
     setShowEditTenantModal(false);
     setEditingItem(null);
     
+    // INSTANT: Update UI immediately
+    const previousTenants = queryClient.getQueryData(['rental-tenants']);
+    queryClient.setQueryData(['rental-tenants'], (old) =>
+      old?.map(item => item.id === tenantId ? { ...item, ...formData } : item)
+    );
+    
+    // INSTANT: Show success immediately
+    toast.success('Tenant updated!');
+    
     try {
       await rentalsAPI.updateTenant(tenantId, formData);
-      toast.success('Tenant updated successfully!');
       queryClient.invalidateQueries(['rental-tenants']);
     } catch (error) {
+      // Rollback on error
+      queryClient.setQueryData(['rental-tenants'], previousTenants);
       console.error('Error updating tenant:', error);
-      const errorMessage = error.response?.data?.message || 'Failed to update tenant';
+      const errorMessage = error.response?.data?.message || 'Failed to update tenant - rolled back';
       toast.error(errorMessage);
     }
   };
 
   const handleDeleteTenant = async () => {
     const tenantId = editingItem.id;
+    
+    // INSTANT: Close modal and clear state immediately
     setShowDeleteTenantModal(false);
     setEditingItem(null);
     
+    // INSTANT: Remove from UI immediately
+    const previousTenants = queryClient.getQueryData(['rental-tenants']);
+    queryClient.setQueryData(['rental-tenants'], (old) =>
+      old?.filter(item => item.id !== tenantId)
+    );
+    
+    // INSTANT: Show success immediately
+    toast.success('Tenant deleted!');
+    
     try {
       await rentalsAPI.deleteTenant(tenantId);
-      toast.success('Tenant deleted successfully!');
       queryClient.invalidateQueries(['rental-tenants']);
     } catch (error) {
+      // Rollback on error
+      queryClient.setQueryData(['rental-tenants'], previousTenants);
       console.error('Error deleting tenant:', error);
-      const errorMessage = error.response?.data?.message || 'Failed to delete tenant';
-      toast.error(errorMessage);
+      
+      // Better error messages
+      if (error.response?.status === 404) {
+        toast.error('Tenant already deleted or not found');
+        queryClient.invalidateQueries(['rental-tenants']); // Refresh to sync
+      } else {
+        const errorMessage = error.response?.data?.message || 'Failed to delete tenant - rolled back';
+        toast.error(errorMessage);
+      }
     }
   };
 

@@ -156,45 +156,98 @@ const TogaRentals = () => {
   // Mutations for Rentals
   const createRentalMutation = useMutation({
     mutationFn: togaRentalService.createRental,
-    onSuccess: () => {
-      queryClient.invalidateQueries(['toga-rentals', selectedDepartment?.id]);
+    onMutate: async (newRental) => {
+      // INSTANT: Cancel outgoing queries
+      await queryClient.cancelQueries(['toga-rentals', selectedDepartment?.id]);
+      
+      // INSTANT: Add to UI immediately
+      const previousRentals = queryClient.getQueryData(['toga-rentals', selectedDepartment?.id]);
+      const tempId = 'temp-' + Date.now();
+      
+      queryClient.setQueryData(['toga-rentals', selectedDepartment?.id], (old = []) => {
+        return [{ ...newRental, id: tempId, created_at: new Date().toISOString() }, ...old];
+      });
+      
+      // INSTANT: Show success immediately
+      toast.success('Student rental added!');
+      setShowAddStudentModal(false);
+      
+      return { previousRentals };
+    },
+    onSuccess: (response) => {
+      // Update with real data from server
+      queryClient.setQueryData(['toga-rentals', selectedDepartment?.id], (old = []) => {
+        return old.map(item => item.id?.toString().startsWith('temp-') ? response.data : item);
+      });
       queryClient.invalidateQueries(['toga-departments']);
       queryClient.invalidateQueries(['toga-stats']);
-      toast.success('Student rental added successfully!');
-      setShowAddStudentModal(false);
     },
-    onError: (error) => {
-      toast.error(error.response?.data?.message || 'Failed to add student rental');
+    onError: (error, variables, context) => {
+      // Rollback on error
+      queryClient.setQueryData(['toga-rentals', selectedDepartment?.id], context.previousRentals);
+      toast.error(error.response?.data?.message || 'Failed to add student rental - rolled back');
     },
   });
 
   const updateRentalMutation = useMutation({
     mutationFn: ({ id, data }) => togaRentalService.updateRental(id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries(['toga-rentals', selectedDepartment?.id]);
-      queryClient.invalidateQueries(['toga-departments']);
-      queryClient.invalidateQueries(['toga-stats']);
-      toast.success('Student rental updated successfully!');
+    onMutate: async ({ id, data }) => {
+      // INSTANT: Cancel outgoing queries
+      await queryClient.cancelQueries(['toga-rentals', selectedDepartment?.id]);
+      
+      const previousRentals = queryClient.getQueryData(['toga-rentals', selectedDepartment?.id]);
+      
+      // INSTANT: Update UI immediately
+      queryClient.setQueryData(['toga-rentals', selectedDepartment?.id], (old = []) => {
+        return old.map(item => item.id === id ? { ...item, ...data } : item);
+      });
+      
+      // INSTANT: Show success immediately
+      toast.success('Student rental updated!');
       setShowEditStudentModal(false);
       setSelectedItem(null);
+      
+      return { previousRentals };
     },
-    onError: (error) => {
-      toast.error(error.response?.data?.message || 'Failed to update student rental');
+    onSuccess: () => {
+      queryClient.invalidateQueries(['toga-departments']);
+      queryClient.invalidateQueries(['toga-stats']);
+    },
+    onError: (error, variables, context) => {
+      // Rollback on error
+      queryClient.setQueryData(['toga-rentals', selectedDepartment?.id], context.previousRentals);
+      toast.error(error.response?.data?.message || 'Failed to update - rolled back');
     },
   });
 
   const deleteRentalMutation = useMutation({
     mutationFn: togaRentalService.deleteRental,
-    onSuccess: () => {
-      queryClient.invalidateQueries(['toga-rentals', selectedDepartment?.id]);
-      queryClient.invalidateQueries(['toga-departments']);
-      queryClient.invalidateQueries(['toga-stats']);
-      toast.success('Student rental deleted successfully!');
+    onMutate: async (id) => {
+      // INSTANT: Cancel outgoing queries
+      await queryClient.cancelQueries(['toga-rentals', selectedDepartment?.id]);
+      
+      const previousRentals = queryClient.getQueryData(['toga-rentals', selectedDepartment?.id]);
+      
+      // INSTANT: Remove from UI immediately
+      queryClient.setQueryData(['toga-rentals', selectedDepartment?.id], (old = []) => {
+        return old.filter(item => item.id !== id);
+      });
+      
+      // INSTANT: Show success immediately
+      toast.success('Student rental deleted!');
       setShowDeleteStudentModal(false);
       setSelectedItem(null);
+      
+      return { previousRentals };
     },
-    onError: (error) => {
-      toast.error(error.response?.data?.message || 'Failed to delete student rental');
+    onSuccess: () => {
+      queryClient.invalidateQueries(['toga-departments']);
+      queryClient.invalidateQueries(['toga-stats']);
+    },
+    onError: (error, variables, context) => {
+      // Rollback on error
+      queryClient.setQueryData(['toga-rentals', selectedDepartment?.id], context.previousRentals);
+      toast.error(error.response?.data?.message || 'Failed to delete - rolled back');
     },
   });
 

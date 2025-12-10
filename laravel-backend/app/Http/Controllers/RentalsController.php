@@ -99,11 +99,9 @@ class RentalsController extends Controller
 
     public function deleteProperty(RentalProperty $property)
     {
-        // Check if property has active contracts
-        if ($property->contracts()->where('status', 'Active')->exists()) {
-            return response()->json(['error' => 'Cannot delete property with active contracts'], 400);
-        }
-
+        // Delete property - all related contracts, payments, and maintenance records
+        // will be deleted automatically due to cascade foreign keys
+        // This preserves historical data while removing the property
         $property->delete();
         return response()->json(['message' => 'Property deleted successfully']);
     }

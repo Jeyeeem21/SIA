@@ -26,19 +26,24 @@ const Categories = () => {
 
   // Fetch categories from API
   useEffect(() => {
-    fetchCategories();
+    fetchCategories(true); // Show loading only on first load
+    
+    // Real-time polling every 1 second (no loading spinner)
+    const interval = setInterval(() => fetchCategories(false), 1000);
+    
+    return () => clearInterval(interval);
   }, []);
 
-  const fetchCategories = async () => {
+  const fetchCategories = async (showLoading = false) => {
     try {
-      setLoading(true);
+      if (showLoading) setLoading(true);
       const response = await categoriesAPI.getAll();
       setCategories(response.data);
     } catch (error) {
-      toast.error('Failed to fetch categories');
+      if (showLoading) toast.error('Failed to fetch categories');
       console.error('Error fetching categories:', error);
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   };
 
@@ -103,7 +108,15 @@ const Categories = () => {
       await fetchCategories();
       toast.success('Category deleted successfully!');
     } catch (error) {
-      toast.error(error.response?.data?.message || 'Failed to delete category');
+      // Better error messages
+      if (error.response?.status === 404) {
+        toast.error('Category already deleted or not found');
+        await fetchCategories(); // Refresh to remove from UI
+      } else if (error.response?.status === 422) {
+        toast.error(error.response?.data?.message || 'Cannot delete category');
+      } else {
+        toast.error('Failed to delete category');
+      }
       console.error('Error deleting category:', error);
     }
   };

@@ -664,7 +664,7 @@ const Orders = () => {
     { key: 'customer_name', label: 'Customer Name', render: (v) => v || 'Walk-in Customer' },
     { key: 'service_type', label: 'Category' },
     { key: 'order_items', label: 'Products', render: (items) => items?.map(item => 
-      `${item.product?.product_name} (x${item.quantity})`
+      `${item.product?.product_name || item.product_name || 'Deleted Product'} (x${item.quantity})`
     ).join(', ') || 'N/A' },
     { key: 'total_amount', label: 'Total Amount', render: (v) => `₱${parseFloat(v).toLocaleString()}` },
     { key: 'status', label: 'Order Status' },
@@ -837,7 +837,7 @@ const Orders = () => {
                           {order.order_items && order.order_items.length > 0 ? (
                             order.order_items.map((item, idx) => (
                               <div key={idx} className="text-xs text-slate-700">
-                                • {item.product?.product_name || 'Unknown Product'} <span className="text-slate-500">(x{item.quantity})</span>
+                                • {item.product?.product_name || item.product_name || 'Deleted Product'} <span className="text-slate-500">(x{item.quantity})</span>
                               </div>
                             ))
                           ) : (
